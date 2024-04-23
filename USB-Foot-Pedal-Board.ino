@@ -151,8 +151,8 @@ void setup()
 
   // addressable RGB LEDS
   FastLED.addLeds<LED_TYPE, DATA_PIN>(leds, NUM_LEDS);
-  FastLED.clear();           // all addressable LEDs off during setup
-  FastLED.setBrightness(10); // Brightness (0-255)
+  FastLED.clear();          // all addressable LEDs off during setup
+  FastLED.setBrightness(8); // Brightness (0-255)
   FastLED.show();
 }
 
