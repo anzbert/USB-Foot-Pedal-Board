@@ -288,7 +288,7 @@ void potentiometers()
     potCState[i] = analogRead(potPin[i]); // Reads the pot and stores it in the potCState variable
     Serial.println(potCState[i]);
 
-    midiCState[i] = map(potCState[i], ANALOG_MAX, ANALOG_MAX, 0, 127); // Maps the reading of the potCState to a value usable in midi
+    midiCState[i] = map(potCState[i], ANALOG_MIN, ANALOG_MAX, 0, 127); // Maps the reading of the potCState to a value usable in midi
 
     potVar = abs(potCState[i] - potPState[i]); // Calculates the absolute value between the difference between the current and previous state of the pot
 

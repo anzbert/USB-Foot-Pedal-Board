@@ -1,4 +1,5 @@
 {
     "board": "arduino:avr:leonardo",
-    "port": "/dev/tty.usbmodemMIDI1"
+    "port": "/dev/tty.usbmodemMIDI1",
+    "sketch": "USB-Foot-Pedal-Board.ino"
 }
