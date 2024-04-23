@@ -54,8 +54,7 @@ const byte PIN_PROG2 = 15;
 enum midiMessage
 {
   Note,
-  CC,
-  PC
+  CC
 };
 
 // first 6 for F/S and last 2 for external F/S
@@ -134,8 +133,8 @@ CRGB leds[NUM_LEDS];
 /////////////////// !! SETUP !! ////
 void setup()
 {
-  Serial.begin(9600); // turns on serial readout for debugging
-  // Serial.begin(31250);  // Set MIDI baud rate:
+  // Serial.begin(9600);   // turns on serial readout for debugging
+  Serial1.begin(31250); // Set MIDI baud rate
 
   // program selector - set pullup resistor for 2 program selector pins
   pinMode(PIN_PROG1, INPUT_PULLUP);
@@ -184,7 +183,7 @@ void checkProgram()
   if (progPin1State != lastProgPin1State || progPin2State != lastProgPin2State)
   {
 
-    // set to PROG1_VALUES = SP404MK2 prog
+    // set to PROG1
     if (progPin1State == 1 && progPin2State == 0)
     {
 
@@ -197,7 +196,7 @@ void checkProgram()
       currentColor = PROG1_COLOR;
     }
 
-    // set to PROG2_VALUES
+    // set to PROG2
     if (progPin1State == 1 && progPin2State == 1)
     {
 
@@ -210,7 +209,7 @@ void checkProgram()
       currentColor = PROG2_COLOR;
     }
 
-    // set to program 3
+    // set to PROG3
     if (progPin1State == 0 && progPin2State == 1)
     {
 
@@ -223,7 +222,7 @@ void checkProgram()
       currentColor = PROG3_COLOR;
     }
 
-    leds[0] = CHSV(currentColor, 255, 255); // change led colour depending on program
+    leds[0] = CHSV(currentColor, 255, 255); // change PROG indicator led colour depending on program
     FastLED.show();
 
     lastProgPin1State = progPin1State;
@@ -248,16 +247,29 @@ void buttons()
 
         if (buttonCstate[i] == LOW)
         {
-
-          noteOn(currentMidiChannel, currentProgram[i], 127); // channel, note, velocity
+          // ON
+          if (currentMessageType[i] == Note)
+          {
+            noteOn(currentMidiChannel, currentProgram[i], 127); // channel, note, velocity}
+          }
+          else if (currentMessageType[i] = CC)
+          {
+            controlChange(currentMidiChannel, currentProgram[i], 127);
+          }
           MidiUSB.flush();
         }
-
         else
         {
-
-          noteOn(currentMidiChannel, currentProgram[i], 0); // channel, note, velocity
-          MidiUSB.flush();                                  // send midi buffer (after each note)
+          // OFF
+          if (currentMessageType[i] == Note)
+          {
+            noteOff(currentMidiChannel, currentProgram[i]); // channel, note, velocity
+          }
+          else if (currentMessageType[i] = CC)
+          {
+            controlChange(currentMidiChannel, currentProgram[i], 0);
+          }
+          MidiUSB.flush(); // send midi buffer (after each note)
         }
         buttonPstate[i] = buttonCstate[i];
       }
@@ -386,7 +398,7 @@ void rxMidiLeds()
     for (int i = 1; i < NUM_LEDS; i++)
     { // cycle through all addressable LEDs - dont use LED 0!!
 
-      if (rxType == 9 && rxPitch == currentProgram[i - 1])
+      if (rxType == 9 && rxPitch == currentProgram[i - 1] && currentMessageType[i - 1] == Note)
       { // if receiving noteON AND pitch matches LED
         int mapvelocity = map(rxVelocity, 0, 127, 0, 255);
         leds[i] = CHSV(mapvelocity, 255, 255); // control led by hue
@@ -404,7 +416,7 @@ void rxMidiLeds()
     // cycle through FASTLEDs
     for (int i = 1; i < NUM_LEDS; i++)
     { // cycle through all addressable LEDs - dont use LED 0!!
-      if (rxType == 8 && rxPitch == currentProgram[i - 1])
+      if (rxType == 8 && rxPitch == currentProgram[i - 1] && currentMessageType[i - 1] == Note)
       {                          // if receiving noteOFF AND pitch  matches LED
         leds[i] = CHSV(0, 0, 0); // turn LED off
         FastLED.show();
@@ -455,30 +467,38 @@ void serialDebug()
 // Arduino (pro)micro midi functions MIDIUSB Library for sending CCs and noteON and noteOFF
 void noteOn(byte channel, byte pitch, byte velocity)
 {
-  midiEventPacket_t noteOn = {0x09, 0x90 | channel, pitch, velocity};
-  MidiUSB.sendMIDI(noteOn);
+  midiEventPacket_t noteOnPacket = {0x09, 0x90 | channel, pitch, velocity};
+  MidiUSB.sendMIDI(noteOnPacket);
+
+  midiSerial(0x90 | channel, pitch, velocity);
 }
 
-void noteOff(byte channel, byte pitch, byte velocity)
+void noteOff(byte channel, byte pitch)
 {
-  midiEventPacket_t noteOff = {0x08, 0x80 | channel, pitch, velocity};
-  MidiUSB.sendMIDI(noteOff);
+  // midiEventPacket_t noteOffPacket = {0x08, 0x80 | channel, pitch, 0}; // note off message
+  midiEventPacket_t noteOnPacket = {0x09, 0x90 | channel, pitch, 0}; // note on with velocity 0
+  MidiUSB.sendMIDI(noteOnPacket);
+
+  // midiSerial(0x80 | channel, pitch, 0); // note off message
+  midiSerial(0x90 | channel, pitch, 0); // note on with velocity 0
 }
 
 void controlChange(byte channel, byte control, byte value)
 {
-  midiEventPacket_t event = {0x0B, 0xB0 | channel, control, value};
-  MidiUSB.sendMIDI(event);
+  midiEventPacket_t ccPacket = {0x0B, 0xB0 | channel, control, value};
+  MidiUSB.sendMIDI(ccPacket);
+
+  midiSerial(0xA0 | channel, control, value);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////
 // MIDI messages via serial bus
 
-// Sends a midi signal on channel 1 (0x90)
+// Sends a midi signal on the serial bus
 // cmd = message type and channel,
-void midinoteOn(int cmd, int pitch, int velocity)
+void midiSerial(byte cmd, byte pitch, byte velocity)
 {
-  Serial.write(cmd);
-  Serial.write(pitch);
-  Serial.write(velocity);
+  Serial1.write(cmd);
+  Serial1.write(pitch);
+  Serial1.write(velocity);
 }
