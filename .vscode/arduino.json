@@ -2,5 +2,11 @@
     "board": "arduino:avr:leonardo",
     "port": "/dev/tty.usbmodemMIDI1",
     "sketch": "USB-Foot-Pedal-Board.ino",
-    "output": "../build"
+    "output": "../build",
+    "buildPreferences": [
+        [
+            "build.extra_flags",
+            "-D__AVR_ATmega32U4__"
+        ]
+    ]
 }
