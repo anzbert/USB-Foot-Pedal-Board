@@ -41,7 +41,7 @@ const byte EXPRESSION_CC = 11; // Lowest MIDI CC to be used
 //// Buttons
 const int NUM_BUTTONS = 8;                                       //*number of buttons (2 buttons + 2 encoder buttons + 1 digital crossfader)
 const int BUTTON_PINS[NUM_BUTTONS] = {3, 4, 5, 6, 7, 8, A1, A0}; //* the number of the pushbutton pins in the desired order
-const unsigned long DEBOUNCE_DELAY = 13;                         // the debounce time in ms; increase if the output flickers (default = 13)
+const unsigned long DEBOUNCE_DELAY = 50;                         // the debounce time in ms; increase if the output flickers
 
 int buttonCstate[NUM_BUTTONS] = {};               // stores the button current value
 int buttonPstate[NUM_BUTTONS] = {};               // stores the button previous value
@@ -57,28 +57,33 @@ enum midiMessage
   CC
 };
 
+// Main Midi Channels are 1-16 (but really 0-15 under the hood)
+const byte CH1 = 0;
+const byte CH2 = 8;
+const byte CH3 = 8;
+
 // first 6 for F/S and last 2 for external F/S
-const byte PROG1_VALUES[NUM_BUTTONS] = {36, 37, 38, 39, 40, 41, 42, 43};
-const midiMessage PROG1_TYPES[NUM_BUTTONS] = {CC, CC, CC, CC, CC, CC, CC, CC};
+const byte PROG1_VALUES[NUM_BUTTONS] = {88, 89, 91, 87, 35, 85, 100, 101};
+const midiMessage PROG1_TYPES[NUM_BUTTONS] = {CC, CC, CC, CC, Note, CC, CC, CC};
+const byte PROG1_CHANNELS[NUM_BUTTONS] = {CH1, CH1, CH1, CH1, CH1, CH1, CH1, CH1};
 
 const byte PROG2_VALUES[NUM_BUTTONS] = {24, 25, 26, 27, 28, 29, 30, 31};
 const midiMessage PROG2_TYPES[NUM_BUTTONS] = {Note, Note, Note, Note, Note, Note, Note, Note};
+const byte PROG2_CHANNELS[NUM_BUTTONS] = {CH2, CH2, CH2, CH2, CH2, CH2, CH2, CH2};
 
 const byte PROG3_VALUES[NUM_BUTTONS] = {0, 1, 2, 3, 4, 5, 6, 7};
 const midiMessage PROG3_TYPES[NUM_BUTTONS] = {Note, Note, Note, Note, Note, Note, Note, Note};
+const byte PROG3_CHANNELS[NUM_BUTTONS] = {CH3, CH3, CH3, CH3, CH3, CH3, CH3, CH3};
 
 const byte PROG1_COLOR = GREEN;
 const byte PROG2_COLOR = RED;
 const byte PROG3_COLOR = BLUE;
 
-const byte PROG1_MIDI_CHANNEL = 1;
-const byte PROG2_MIDI_CHANNEL = 9;
-const byte PROG3_MIDI_CHANNEL = 9;
-
 byte currentColor;
-byte currentMidiChannel;
+byte currentExprChannel;
 enum midiMessage currentMessageType[NUM_BUTTONS] = {};
 byte currentProgram[NUM_BUTTONS] = {};
+byte currentChannel[NUM_BUTTONS] = {};
 
 byte progPin1State;
 byte progPin2State;
@@ -196,8 +201,9 @@ void checkProgram()
       {
         currentProgram[i] = PROG1_VALUES[i];
         currentMessageType[i] = PROG1_TYPES[i];
+        currentChannel[i] = PROG1_CHANNELS[i];
       }
-      currentMidiChannel = PROG1_MIDI_CHANNEL;
+      currentExprChannel = CH1;
       currentColor = PROG1_COLOR;
     }
 
@@ -209,8 +215,9 @@ void checkProgram()
       {
         currentProgram[i] = PROG2_VALUES[i];
         currentMessageType[i] = PROG2_TYPES[i];
+        currentChannel[i] = PROG2_CHANNELS[i];
       }
-      currentMidiChannel = PROG2_MIDI_CHANNEL;
+      currentExprChannel = CH2;
       currentColor = PROG2_COLOR;
     }
 
@@ -222,8 +229,9 @@ void checkProgram()
       {
         currentProgram[i] = PROG3_VALUES[i];
         currentMessageType[i] = PROG3_TYPES[i];
+        currentChannel[i] = PROG3_CHANNELS[i];
       }
-      currentMidiChannel = PROG3_MIDI_CHANNEL;
+      currentExprChannel = CH3;
       currentColor = PROG3_COLOR;
     }
 
@@ -255,11 +263,11 @@ void buttons()
           // ON
           if (currentMessageType[i] == Note)
           {
-            noteOn(currentMidiChannel, currentProgram[i], 127); // channel, note, velocity}
+            noteOn(currentChannel[i], currentProgram[i], 127); // channel, note, velocity}
           }
           else if (currentMessageType[i] = CC)
           {
-            controlChange(currentMidiChannel, currentProgram[i], 127);
+            controlChange(currentChannel[i], currentProgram[i], 127);
           }
           MidiUSB.flush();
         }
@@ -268,11 +276,11 @@ void buttons()
           // OFF
           if (currentMessageType[i] == Note)
           {
-            noteOff(currentMidiChannel, currentProgram[i]); // channel, note, velocity
+            noteOff(currentChannel[i], currentProgram[i]); // channel, note, velocity
           }
           else if (currentMessageType[i] = CC)
           {
-            controlChange(currentMidiChannel, currentProgram[i], 0);
+            controlChange(currentChannel[i], currentProgram[i], 0);
           }
           MidiUSB.flush(); // send midi buffer (after each note)
         }
@@ -322,7 +330,7 @@ void potentiometers()
         // MIDI.sendControlChange(EXPRESSION_CC+i, midiCState[i], currentMidiChannel);
 
         // use if using with ATmega32U4 (micro, pro micro, leonardo...)
-        controlChange(currentMidiChannel, EXPRESSION_CC + i, midiCState[i]); // manda control change (channel, CC, value)
+        controlChange(currentExprChannel, EXPRESSION_CC + i, midiCState[i]); // manda control change (channel, CC, value)
         MidiUSB.flush();
 
         // Serial.println(midiCState);
@@ -344,15 +352,11 @@ void refreshMidi()
   // Bitshift to separate rx.byte1 (byte = 8bit) into first 4bit (TYPE), and second 4bit (Channel)
   rxChannel = rx.byte1 & B00001111; // get channel
 
-  if (rxChannel == currentMidiChannel)
-  {
-
-    // Bitshift to separate rx.byte1 (byte = 8bit) into first 4bit (TYPE), and second 4bit (Channel)
-    rxType = rx.byte1 >> 4;
-    rxPitch = rx.byte2;    // Received pitch - midi-button-and-led first note setting
-    rxVelocity = rx.byte3; // Velocity variable - can be used, for example, for brightness
-    rxUSB = rx.header;     // get usb header
-  }
+  // Bitshift to separate rx.byte1 (byte = 8bit) into first 4bit (TYPE), and second 4bit (Channel)
+  rxType = rx.byte1 >> 4;
+  rxPitch = rx.byte2;    // Received pitch - midi-button-and-led first note setting
+  rxVelocity = rx.byte3; // Velocity variable - can be used, for example, for brightness
+  rxUSB = rx.header;     // get usb header
 }
 
 void rxMidiLeds()
@@ -398,7 +402,19 @@ void rxMidiLeds()
 
   ////////////////////////////////////////
   // ALL CHANNEL SPECIFIC MIDI RX BELOW THIS GUARD
-  if (rxChannel != currentMidiChannel)
+
+  bool matchAnyChannel = false;
+
+  if (rxChannel == currentExprChannel)
+    matchAnyChannel = true;
+
+  for (byte i = 0; i < NUM_BUTTONS; i = i + 1)
+  {
+    if (rxChannel == currentChannel[i])
+      matchAnyChannel = true;
+  }
+
+  if (!matchAnyChannel)
     return;
 
   //////////////////
@@ -411,7 +427,7 @@ void rxMidiLeds()
     for (int i = 1; i < NUM_LEDS; i++)
     { // cycle through all addressable LEDs - dont use LED 0!!
 
-      if (rxPitch == currentProgram[i - 1] && currentMessageType[i - 1] == receivedEnumType)
+      if (rxPitch == currentProgram[i - 1] && currentMessageType[i - 1] == receivedEnumType && rxChannel == currentChannel[i - 1])
       { // if receiving noteON AND pitch matches LED
         int mapvelocity = map(rxVelocity, 0, 127, 0, 255);
         leds[i] = CHSV(mapvelocity, 255, 255); // control led by hue
@@ -427,7 +443,7 @@ void rxMidiLeds()
     // cycle through FASTLEDs
     for (int i = 1; i < NUM_LEDS; i++)
     { // cycle through all addressable LEDs - dont use LED 0!!
-      if (rxPitch == currentProgram[i - 1] && currentMessageType[i - 1] == Note)
+      if (rxPitch == currentProgram[i - 1] && currentMessageType[i - 1] == Note && rxChannel == currentChannel[i - 1])
       {                          // if receiving noteOFF AND pitch  matches LED
         leds[i] = CHSV(0, 0, 0); // turn LED off
         FastLED.show();
