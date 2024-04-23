@@ -29,9 +29,9 @@
 #include <ResponsiveAnalogRead.h>
 
 // LED HUE codes
-#define RED 0
-#define GREEN 96
-#define BLUE 160
+const byte RED = 0;
+const byte GREEN = 96;
+const byte BLUE = 160;
 
 //////////////////// !! VARIABLES !! ///
 // !! MIDI SETTINGS !! //
