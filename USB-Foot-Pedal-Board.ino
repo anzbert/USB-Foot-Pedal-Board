@@ -134,7 +134,12 @@ CRGB leds[NUM_LEDS];
 void setup()
 {
   // Serial.begin(9600);   // turns on serial readout for debugging
+
+  // IFNDEF because code generates an error squiggle in VSCode with the current arduino extension
+  // even if there is no problem with 'Serial1'
+#ifndef __INTELLISENSE__
   Serial1.begin(31250); // Set MIDI baud rate
+#endif
 
   // program selector - set pullup resistor for 2 program selector pins
   pinMode(PIN_PROG1, INPUT_PULLUP);
@@ -352,6 +357,9 @@ void refreshMidi()
 
 void rxMidiLeds()
 {
+  //////////////////////////
+  // CLOCK
+
   // receive midi clock (type 15 / channels: 10=start; 12=stop; 8=pulse / 24 pulses per quarter note)
 
   // receive a start
@@ -388,17 +396,22 @@ void rxMidiLeds()
     clockCounter = 0;
   }
 
-  //////////////////
-  // NOTEON received
+  ////////////////////////////////////////
+  // ALL CHANNEL SPECIFIC MIDI RX BELOW THIS GUARD
+  if (rxChannel != currentMidiChannel)
+    return;
 
-  if (rxChannel == currentMidiChannel && rxType == 9)
-  { // if receiving NoteON on correct channel
+  //////////////////
+  // NOTEON or CC received
+  if (rxType == 0x9 || rxType == 0xB)
+  {
+    enum midiMessage receivedEnumType = rxType == 0x9 ? Note : CC;
 
     // cycle through FASTLEDs
     for (int i = 1; i < NUM_LEDS; i++)
     { // cycle through all addressable LEDs - dont use LED 0!!
 
-      if (rxType == 9 && rxPitch == currentProgram[i - 1] && currentMessageType[i - 1] == Note)
+      if (rxPitch == currentProgram[i - 1] && currentMessageType[i - 1] == receivedEnumType)
       { // if receiving noteON AND pitch matches LED
         int mapvelocity = map(rxVelocity, 0, 127, 0, 255);
         leds[i] = CHSV(mapvelocity, 255, 255); // control led by hue
@@ -409,14 +422,12 @@ void rxMidiLeds()
 
   ///////////////////
   // NOTEOFF received
-
-  if (rxChannel == currentMidiChannel && rxType == 8)
-  { // if receiving NoteOFF on correct channel
-
+  if (rxType == 0x8)
+  {
     // cycle through FASTLEDs
     for (int i = 1; i < NUM_LEDS; i++)
     { // cycle through all addressable LEDs - dont use LED 0!!
-      if (rxType == 8 && rxPitch == currentProgram[i - 1] && currentMessageType[i - 1] == Note)
+      if (rxPitch == currentProgram[i - 1] && currentMessageType[i - 1] == Note)
       {                          // if receiving noteOFF AND pitch  matches LED
         leds[i] = CHSV(0, 0, 0); // turn LED off
         FastLED.show();
@@ -488,7 +499,7 @@ void controlChange(byte channel, byte control, byte value)
   midiEventPacket_t ccPacket = {0x0B, 0xB0 | channel, control, value};
   MidiUSB.sendMIDI(ccPacket);
 
-  midiSerial(0xA0 | channel, control, value);
+  midiSerial(0xB0 | channel, control, value);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////
@@ -498,7 +509,11 @@ void controlChange(byte channel, byte control, byte value)
 // cmd = message type and channel,
 void midiSerial(byte cmd, byte pitch, byte velocity)
 {
+  // IFNDEF because code generates an error squiggle in VSCode with the current arduino extension
+  // even if there is no problem with 'Serial1'
+#ifndef __INTELLISENSE__
   Serial1.write(cmd);
   Serial1.write(pitch);
   Serial1.write(velocity);
+#endif
 }
