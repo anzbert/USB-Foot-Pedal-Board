@@ -266,7 +266,7 @@ void buttons()
           {
             noteOn(currentChannel[i], currentProgram[i], 127); // channel, note, velocity}
           }
-          else if (currentMessageType[i] = CC)
+          else if (currentMessageType[i] == CC)
           {
             controlChange(currentChannel[i], currentProgram[i], 127);
           }
@@ -283,7 +283,7 @@ void buttons()
           {
             noteOff(currentChannel[i], currentProgram[i]); // channel, note, velocity
           }
-          else if (currentMessageType[i] = CC)
+          else if (currentMessageType[i] == CC)
           {
             controlChange(currentChannel[i], currentProgram[i], 0);
           }
