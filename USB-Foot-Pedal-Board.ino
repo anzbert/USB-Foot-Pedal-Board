@@ -33,10 +33,6 @@ const byte RED = 0;
 const byte GREEN = 96;
 const byte BLUE = 160;
 
-//////////////////// !! VARIABLES !! ///
-// !! MIDI SETTINGS !! //
-const byte EXPRESSION_CC = 11; // Lowest MIDI CC to be used
-
 ///////////////
 //// Buttons
 const int NUM_BUTTONS = 8;                                       //*number of buttons (2 buttons + 2 encoder buttons + 1 digital crossfader)
@@ -53,9 +49,12 @@ const byte PIN_PROG2 = 15;
 
 enum midiMessage
 {
-  Note,
+  NOTE,
   CC,
-  PC
+  PC,
+  START,
+  STOP,
+  CONT
 };
 
 // Main Midi Channels are 1-16 (but really 0-15 under the hood)
@@ -65,23 +64,25 @@ const byte CH3 = 8;
 
 // first 6 for F/S and last 2 for external F/S
 const byte PROG1_VALUES[NUM_BUTTONS] = {88, 89, 91, 87, 35, 85, 100, 101};
-const midiMessage PROG1_TYPES[NUM_BUTTONS] = {CC, CC, CC, CC, Note, CC, CC, CC};
+const midiMessage PROG1_TYPES[NUM_BUTTONS] = {CC, CC, CC, CC, NOTE, CC, CC, CC};
 const byte PROG1_CHANNELS[NUM_BUTTONS] = {CH1, CH1, CH1, CH1, CH1, CH1, CH1, CH1};
 
 const byte PROG2_VALUES[NUM_BUTTONS] = {24, 25, 26, 27, 28, 29, 30, 31};
-const midiMessage PROG2_TYPES[NUM_BUTTONS] = {Note, Note, Note, Note, Note, Note, Note, Note};
+const midiMessage PROG2_TYPES[NUM_BUTTONS] = {NOTE, NOTE, NOTE, NOTE, NOTE, NOTE, NOTE, NOTE};
 const byte PROG2_CHANNELS[NUM_BUTTONS] = {CH2, CH2, CH2, CH2, CH2, CH2, CH2, CH2};
 
 const byte PROG3_VALUES[NUM_BUTTONS] = {0, 1, 2, 3, 4, 5, 6, 7};
-const midiMessage PROG3_TYPES[NUM_BUTTONS] = {Note, Note, Note, Note, Note, Note, Note, Note};
+const midiMessage PROG3_TYPES[NUM_BUTTONS] = {NOTE, NOTE, NOTE, NOTE, NOTE, NOTE, NOTE, NOTE};
 const byte PROG3_CHANNELS[NUM_BUTTONS] = {CH3, CH3, CH3, CH3, CH3, CH3, CH3, CH3};
 
 const byte PROG1_COLOR = GREEN;
 const byte PROG2_COLOR = RED;
 const byte PROG3_COLOR = BLUE;
 
+const byte EXPRESSION_CC = 11;
+
 byte currentColor;
-byte currentExprChannel;
+byte currentExprChannel; // for expression pedal
 enum midiMessage currentMessageType[NUM_BUTTONS] = {};
 byte currentProgram[NUM_BUTTONS] = {};
 byte currentChannel[NUM_BUTTONS] = {};
@@ -95,9 +96,9 @@ byte lastProgPin2State = 99;
 /////////////////////////////////////////////
 // Potentiometers
 
-const byte PIN_POTI = A3;
-const int ANALOG_MAX = 1023;
 const int ANALOG_MIN = 60;
+const int ANALOG_MAX = 1023;
+const byte PIN_POTI = A3;
 const int NUM_POTS = 1;       //* number of potis
 const int TIMEOUT = 800;      //* Amount of time the potentiometer will be read after it exceeds the varThreshold
 const int VAR_THRESHOLD = 10; //* Threshold for the potentiometer signal variation
@@ -262,7 +263,7 @@ void buttons()
         if (buttonCstate[i] == LOW)
         {
           // ON
-          if (currentMessageType[i] == Note)
+          if (currentMessageType[i] == NOTE)
           {
             noteOn(currentChannel[i], currentProgram[i], 127); // channel, note, velocity}
           }
@@ -274,12 +275,23 @@ void buttons()
           {
             programChange(currentChannel[i], currentProgram[i]);
           }
-          MidiUSB.flush();
+          else if (currentMessageType[i] == START)
+          {
+            midiStart(currentChannel[i]);
+          }
+          else if (currentMessageType[i] == STOP)
+          {
+            midiStop(currentChannel[i]);
+          }
+          else if (currentMessageType[i] == CONT)
+          {
+            midiCont(currentChannel[i]);
+          }
         }
         else
         {
           // OFF
-          if (currentMessageType[i] == Note)
+          if (currentMessageType[i] == NOTE)
           {
             noteOff(currentChannel[i], currentProgram[i]); // channel, note, velocity
           }
@@ -287,8 +299,9 @@ void buttons()
           {
             controlChange(currentChannel[i], currentProgram[i], 0);
           }
-          MidiUSB.flush(); // send midi buffer (after each note)
         }
+        MidiUSB.flush(); // send midi buffer
+
         buttonPstate[i] = buttonCstate[i];
       }
     }
@@ -299,7 +312,6 @@ void buttons()
 // POTENTIOMETERS
 void potentiometers()
 {
-
   for (int i = 0; i < NUM_POTS; i++)
   { // Loops through all the potentiometers
 
@@ -326,16 +338,15 @@ void potentiometers()
       potMoving = false;
     }
 
-    if (potMoving == true)
+    if (potMoving)
     { // If the potentiometer is still moving, send the change control
       if (midiPState[i] != midiCState[i])
       {
-
         // use if using with ATmega328 (uno, mega, nano...)
         // MIDI.sendControlChange(EXPRESSION_CC+i, midiCState[i], currentMidiChannel);
 
         // use if using with ATmega32U4 (micro, pro micro, leonardo...)
-        controlChange(currentExprChannel, EXPRESSION_CC + i, midiCState[i]); // manda control change (channel, CC, value)
+        controlChange(currentExprChannel, EXPRESSION_CC + i, midiCState[i]);
         MidiUSB.flush();
 
         // Serial.println(midiCState);
@@ -426,7 +437,7 @@ void rxMidiLeds()
   // NOTEON or CC received
   if (rxType == 0x9 || rxType == 0xB)
   {
-    enum midiMessage receivedEnumType = rxType == 0x9 ? Note : CC;
+    enum midiMessage receivedEnumType = rxType == 0x9 ? NOTE : CC;
 
     // cycle through FASTLEDs
     for (int i = 1; i < NUM_LEDS; i++)
@@ -448,7 +459,7 @@ void rxMidiLeds()
     // cycle through FASTLEDs
     for (int i = 1; i < NUM_LEDS; i++)
     { // cycle through all addressable LEDs - dont use LED 0!!
-      if (rxPitch == currentProgram[i - 1] && currentMessageType[i - 1] == Note && rxChannel == currentChannel[i - 1])
+      if (rxPitch == currentProgram[i - 1] && currentMessageType[i - 1] == NOTE && rxChannel == currentChannel[i - 1])
       {                          // if receiving noteOFF AND pitch  matches LED
         leds[i] = CHSV(0, 0, 0); // turn LED off
         FastLED.show();
@@ -500,6 +511,37 @@ void serialDebug()
 
 ////////////////////////////////////////////////////////////////////////////////////////////
 // Arduino (pro)micro midi functions MIDIUSB Library for sending CCs and noteON and noteOFF
+
+/*
+11111010= FA= 250	Start	    none	none
+11111011= FB= 251	Continue	none	none
+11111100= FC= 252	Stop	    none	none
+*/
+
+void midiStart(byte channel)
+{
+  midiEventPacket_t ccPacket = {0x0F, 0xFA | channel, 0x00, 0x00};
+  MidiUSB.sendMIDI(ccPacket);
+
+  midiSerial(0xFA | channel);
+}
+
+void midiStop(byte channel)
+{
+  midiEventPacket_t ccPacket = {0x0F, 0xFC | channel, 0x00, 0x00};
+  MidiUSB.sendMIDI(ccPacket);
+
+  midiSerial(0xFC | channel);
+}
+
+void midiCont(byte channel)
+{
+  midiEventPacket_t ccPacket = {0x0F, 0xFB | channel, 0x00, 0x00};
+  MidiUSB.sendMIDI(ccPacket);
+
+  midiSerial(0xFB | channel);
+}
+
 void noteOn(byte channel, byte pitch, byte velocity)
 {
   midiEventPacket_t noteOnPacket = {0x09, 0x90 | channel, pitch, velocity};
