@@ -54,7 +54,8 @@ const byte PIN_PROG2 = 15;
 enum midiMessage
 {
   Note,
-  CC
+  CC,
+  PC
 };
 
 // Main Midi Channels are 1-16 (but really 0-15 under the hood)
@@ -269,6 +270,10 @@ void buttons()
           {
             controlChange(currentChannel[i], currentProgram[i], 127);
           }
+          else if (currentMessageType[i] = PC)
+          {
+            programChange(currentChannel[i], currentProgram[i]);
+          }
           MidiUSB.flush();
         }
         else
@@ -463,14 +468,17 @@ void serialDebug()
     Serial.print(" / Type: ");
     switch (rxType)
     {
-    case 8:
+    case 0x08:
       Serial.print("NoteOFF");
       break;
-    case 9:
+    case 0x09:
       Serial.print("NoteON");
       break;
-    case 11:
+    case 0x0B:
       Serial.print("CC");
+      break;
+    case 0x0C:
+      Serial.print("PC");
       break;
     default:
       Serial.print("[");
@@ -516,6 +524,14 @@ void controlChange(byte channel, byte control, byte value)
   MidiUSB.sendMIDI(ccPacket);
 
   midiSerial(0xB0 | channel, control, value);
+}
+
+void programChange(byte channel, byte program)
+{
+  midiEventPacket_t ccPacket = {0x0C, 0xC0 | channel, program, 0x00};
+  MidiUSB.sendMIDI(ccPacket);
+
+  midiSerial(0xC0 | channel, program);
 }
 
 /////////////////////////////////////////////////////////////////////////////////////
