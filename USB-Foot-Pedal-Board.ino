@@ -270,7 +270,7 @@ void buttons()
           {
             controlChange(currentChannel[i], currentProgram[i], 127);
           }
-          else if (currentMessageType[i] = PC)
+          else if (currentMessageType[i] == PC)
           {
             programChange(currentChannel[i], currentProgram[i]);
           }
