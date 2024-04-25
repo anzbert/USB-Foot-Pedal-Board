@@ -28,7 +28,7 @@ enum midiMessage // Accepted types of Midi Messages
 
 struct program // Store Program settings
 {
-  byte color;
+  byte colorHue;
   byte expressionCC;
   byte expressionChannel;
   byte values[NUM_BUTTONS];
@@ -44,16 +44,16 @@ struct program // Store Program settings
 // Button Info: First 6 values for internal foot switches and last 2 for external
 
 const program PROG0 = {
-    .color = HUE_GREEN,
+    .colorHue = HUE_GREEN,
     .expressionCC = 11,
     .expressionChannel = 0,
     .values = {88, 89, 91, 87, 0, 85, 100, 101},
-    .types = {CC, CC, CC, CC, PC, CC, CC, CC},
+    .types = {CC, NOTE, CC, CC, PC, CC, CC, CC},
     .channels = {0, 0, 0, 0, 0, 0, 0, 0},
 };
 
 const program PROG1 = {
-    .color = HUE_RED,
+    .colorHue = HUE_RED,
     .expressionCC = 11,
     .expressionChannel = 8,
     .values = {24, 25, 26, 27, 28, 29, 30, 31},
@@ -62,7 +62,7 @@ const program PROG1 = {
 };
 
 const program PROG2 = {
-    .color = HUE_BLUE,
+    .colorHue = HUE_BLUE,
     .expressionCC = 11,
     .expressionChannel = 9,
     .values = {0, 1, 2, 3, 4, 5, 6, 7},
@@ -127,7 +127,7 @@ void setup()
 #ifndef __INTELLISENSE__
   Serial1.begin(31250); // Set MIDI baud rate
 #endif
-  // Serial.begin(9600);   // for debugging
+  // Serial.begin(9600); // for debugging
 
   pinMode(PIN_PROG1, INPUT_PULLUP); // program selector pin1
   pinMode(PIN_PROG2, INPUT_PULLUP); // program selector pin2
@@ -177,7 +177,7 @@ void updateProgram()
     else if (progPin1State == 0 && progPin2State == 1)
       currentProg = 2;
 
-    leds[0] = CHSV(PROGRAMS[currentProg].color, 255, 255); // change PROG indicator led colour depending on program
+    leds[0] = CHSV(PROGRAMS[currentProg].colorHue, 255, 255); // change PROG indicator led colour depending on program
     FastLED.show();
 
     lastProgPin1State = progPin1State;
@@ -298,7 +298,7 @@ void updateLeds()
 
     if (midiClockCounter == 0)
     {
-      leds[0] = CHSV(PROGRAMS[currentProg].color, 255, 255); // LED ON
+      leds[0] = CHSV(PROGRAMS[currentProg].colorHue, 255, 255); // LED ON
       FastLED.show();
     }
     else if (midiClockCounter == 2) // length of each blink in midi pulses (default:2)
@@ -329,16 +329,13 @@ void updateLeds()
   // NOTEON or CC received
   if (rxMidi.type == 0x9 || rxMidi.type == 0xB)
   {
-    enum midiMessage receivedEnumType = rxMidi.type == 0x9 ? midiMessage::NOTE : midiMessage::CC;
-
-    // cycle through FASTLEDs
-    for (int i = 1; i < NUM_LEDS; i++)
+    for (byte led = 1; led < NUM_LEDS; led++)
     {
-      // cycle through all addressable LEDs - dont use LED 0!!
-      if (rxMidi.pitch == PROGRAMS[currentProg].values[i - 1] && PROGRAMS[currentProg].types[i - 1] == receivedEnumType && rxMidi.channel == PROGRAMS[currentProg].channels[i - 1])
-      { // if receiving noteON AND pitch matches LED
-        int mapvelocity = map(rxMidi.velocity, 0, 127, 0, 255);
-        leds[i] = CHSV(mapvelocity, 255, 255); // control led by hue
+      byte b = led - 1; // button
+
+      if (rxMidi.pitch == PROGRAMS[currentProg].values[b] && rxMidi.channel == PROGRAMS[currentProg].channels[b])
+      {
+        leds[led] = rxMidi.velocity == 0 ? CHSV(0, 0, 0) : CHSV(PROGRAMS[currentProg].colorHue, 255, map(rxMidi.velocity, 0, 127, 0, 255));
         FastLED.show();
       }
     }
@@ -348,13 +345,13 @@ void updateLeds()
   // NOTEOFF received
   if (rxMidi.type == 0x8)
   {
-    // cycle through FASTLEDs
-    for (int i = 1; i < NUM_LEDS; i++)
+    for (byte led = 1; led < NUM_LEDS; led++)
     {
-      // cycle through all addressable LEDs - dont use LED 0!!
-      if (rxMidi.pitch == PROGRAMS[currentProg].values[i - 1] && PROGRAMS[currentProg].types[i - 1] == midiMessage::NOTE && rxMidi.channel == PROGRAMS[currentProg].channels[i - 1])
-      {                          // if receiving noteOFF AND pitch  matches LED
-        leds[i] = CHSV(0, 0, 0); // turn LED off
+      byte b = led - 1; // button
+
+      if (rxMidi.pitch == PROGRAMS[currentProg].values[b] && PROGRAMS[currentProg].types[b] == midiMessage::NOTE && rxMidi.channel == PROGRAMS[currentProg].channels[b])
+      {
+        leds[led] = CHSV(0, 0, 0);
         FastLED.show();
       }
     }
