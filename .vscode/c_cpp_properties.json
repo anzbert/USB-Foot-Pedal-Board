@@ -20,7 +20,6 @@
                 "/Users/anz/Library/Arduino15/packages/arduino/hardware/avr/1.8.6/variants/leonardo",
                 "/Users/anz/Documents/Arduino/libraries/MIDIUSB/src",
                 "/Users/anz/Documents/Arduino/libraries/FastLED/src",
-                "/Users/anz/Documents/Arduino/libraries/ResponsiveAnalogRead/src",
                 "/Users/anz/Library/Arduino15/packages/arduino/tools/avr-gcc/7.3.0-atmel3.6.1-arduino7/lib/gcc/avr/7.3.0/include",
                 "/Users/anz/Library/Arduino15/packages/arduino/tools/avr-gcc/7.3.0-atmel3.6.1-arduino7/lib/gcc/avr/7.3.0/include-fixed",
                 "/Users/anz/Library/Arduino15/packages/arduino/tools/avr-gcc/7.3.0-atmel3.6.1-arduino7/avr/include"
