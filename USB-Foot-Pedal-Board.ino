@@ -85,7 +85,7 @@ const unsigned int DEBOUNCE_DELAY = 50; // debounce time in ms; increase if the 
 // ////////////////////////////////////////////////////////////////////////////////////
 
 // ////////////////////////////////////////////////////////////////////////////////////
-// GLOBAL WORKING VARIABLES
+// GLOBAL MUTABLE VARIABLES
 
 // Holds LEDS state
 CRGB leds[NUM_LEDS];
@@ -96,8 +96,8 @@ byte lastProgPin1State = 0xFF;
 byte lastProgPin2State = 0xFF;
 
 // store foot switch state and time
-byte buttonPreviousState[NUM_BUTTONS] = {};       // stores the button previous value
-unsigned long lastDebounceTime[NUM_BUTTONS] = {}; // the last time the pin was toggled
+byte buttonPreviousState[NUM_BUTTONS] = {};       // stores the buttons previous values
+unsigned long lastDebounceTime[NUM_BUTTONS] = {}; // the last time the button pins were toggled
 
 // Expression pedal state, time and mid value
 int potPreviousState;
@@ -226,39 +226,26 @@ void sendFootSwitchMidi()
 // EXPRESSION PEDAL
 void sendExpressionPedalMidi()
 {
-  int potCurrentState = analogRead(PIN_POTI); // Reads the pot and stores it in the potCurrentState variable
-  // Serial.println(potCurrentState);
+  int potCurrentState = analogRead(PIN_POTI);
+  byte exprCurrentMidiValue = map(potCurrentState, ANALOG_MIN, ANALOG_MAX, 0, 127);
 
-  byte exprCurrentMidiValue = map(potCurrentState, ANALOG_MIN, ANALOG_MAX, 0, 127); // Maps the reading of the potCurrentState to a value usable in midi
-
-  int potChange = abs(potCurrentState - potPreviousState); // Calculates the absolute value between the difference between the current and previous state of the pot
+  int potChange = abs(potCurrentState - potPreviousState);
 
   if (potChange > VAR_THRESHOLD)
-  {
-    // Opens the gate if the potentiometer variation is greater than the threshold
-    potPreviousTime = millis(); // Stores the previous time
+  { // Opens the gate if the potentiometer variation is greater than the threshold
+    potPreviousTime = millis();
   }
 
-  if (millis() - potPreviousTime < TIMEOUT)
-  {
-    // If the potTimer is less than the maximum allowed time it means that the potentiometer is still moving
-    potStillMoving = true;
-  }
-  else
-  {
-    potStillMoving = false;
-  }
+  // If the potTimer is less than the maximum allowed time it means that the potentiometer is still moving
+  potStillMoving = millis() - potPreviousTime < TIMEOUT;
 
   if (potStillMoving)
-  {
-    // If the potentiometer is still moving, send the change control
+  { // If the potentiometer is still moving, send the control change (if necessary)
     if (exprPreviousMidiValue != exprCurrentMidiValue)
     {
-      controlChange(PROGRAMS[currentProg].expressionChannel, PROGRAMS[currentProg].expressionCC, exprCurrentMidiValue);
-      MidiUSB.flush();
+      sendMidi(midiMessage::CC, PROGRAMS[currentProg].expressionChannel, PROGRAMS[currentProg].expressionCC, exprCurrentMidiValue);
 
-      // Serial.println(exprCurrentMidiValue);
-      potPreviousState = potCurrentState; // Stores the current reading of the potentiometer to compare with the next
+      potPreviousState = potCurrentState;
       exprPreviousMidiValue = exprCurrentMidiValue;
     }
   }
