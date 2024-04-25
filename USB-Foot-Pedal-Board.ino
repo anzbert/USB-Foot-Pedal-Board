@@ -198,14 +198,12 @@ void sendFootSwitchMidi()
       {
         lastDebounceTime[i] = millis();
 
-        if (buttonCurrentState == LOW)
+        if (buttonCurrentState == LOW) // BUTTON PUSHED
         {
-          // ON
           sendMidi(PROGRAMS[currentProg].types[i], PROGRAMS[currentProg].channels[i], PROGRAMS[currentProg].values[i], 127);
         }
-        else
+        else // BUTTON RELEASED
         {
-          // OFF
           if (PROGRAMS[currentProg].types[i] == midiMessage::NOTE)
           {
             sendMidi(midiMessage::NOTE_OFF, PROGRAMS[currentProg].channels[i], PROGRAMS[currentProg].values[i], 0);
