@@ -35,12 +35,12 @@ const byte BLUE = 160;
 
 ///////////////
 //// Buttons
-const int NUM_BUTTONS = 8;                                       //*number of buttons (2 buttons + 2 encoder buttons + 1 digital crossfader)
-const int BUTTON_PINS[NUM_BUTTONS] = {3, 4, 5, 6, 7, 8, A1, A0}; //* the number of the pushbutton pins in the desired order
-const unsigned long DEBOUNCE_DELAY = 50;                         // the debounce time in ms; increase if the output flickers
+const byte NUM_BUTTONS = 8;                                       //*number of buttons (2 buttons + 2 encoder buttons + 1 digital crossfader)
+const byte BUTTON_PINS[NUM_BUTTONS] = {3, 4, 5, 6, 7, 8, A1, A0}; //* the number of the pushbutton pins in the desired order
+const unsigned int DEBOUNCE_DELAY = 50;                           // the debounce time in ms; increase if the output flickers
 
-int buttonCstate[NUM_BUTTONS] = {};               // stores the button current value
-int buttonPstate[NUM_BUTTONS] = {};               // stores the button previous value
+byte buttonCstate[NUM_BUTTONS] = {};              // stores the button current value
+byte buttonPstate[NUM_BUTTONS] = {};              // stores the button previous value
 unsigned long lastDebounceTime[NUM_BUTTONS] = {}; // the last time the pin was toggled
 
 // PROGRAMS
@@ -64,7 +64,7 @@ const byte CH3 = 8;
 
 // first 6 for F/S and last 2 for external F/S
 const byte PROG1_VALUES[NUM_BUTTONS] = {88, 89, 91, 87, 35, 85, 100, 101};
-const midiMessage PROG1_TYPES[NUM_BUTTONS] = {CC, CC, CC, CC, NOTE, CC, CC, CC};
+const midiMessage PROG1_TYPES[NUM_BUTTONS] = {CC, CC, CC, CC, NOTE, PC, START, STOP};
 const byte PROG1_CHANNELS[NUM_BUTTONS] = {CH1, CH1, CH1, CH1, CH1, CH1, CH1, CH1};
 
 const byte PROG2_VALUES[NUM_BUTTONS] = {24, 25, 26, 27, 28, 29, 30, 31};
@@ -96,20 +96,20 @@ byte lastProgPin2State = 99;
 /////////////////////////////////////////////
 // Potentiometers
 
-const int ANALOG_MIN = 60;
-const int ANALOG_MAX = 1023;
+const unsigned int ANALOG_MIN = 60;
+const unsigned int ANALOG_MAX = 1023;
 const byte PIN_POTI = A3;
-const int NUM_POTS = 1;       //* number of potis
-const int TIMEOUT = 800;      //* Amount of time the potentiometer will be read after it exceeds the varThreshold
-const int VAR_THRESHOLD = 10; //* Threshold for the potentiometer signal variation
+const byte NUM_POTS = 1;               //* number of potis
+const unsigned int TIMEOUT = 800;      //* Amount of time the potentiometer will be read after it exceeds the varThreshold
+const unsigned int VAR_THRESHOLD = 10; //* Threshold for the potentiometer signal variation
 
-int potPin[NUM_POTS] = {PIN_POTI}; //* Pin where the potentiometer is
-int potCState[NUM_POTS] = {};      // Current state of the pot
-int potPState[NUM_POTS] = {};      // Previous state of the pot
-int potVar = 0;                    // Difference between the current and previous state of the pot
+byte potPin[NUM_POTS] = {PIN_POTI}; //* Pin where the potentiometer is
+int potCState[NUM_POTS] = {};       // Current state of the pot
+int potPState[NUM_POTS] = {};       // Previous state of the pot
+int potVar = 0;                     // Difference between the current and previous state of the pot
 
-int midiCState[NUM_POTS] = {}; // Current state of the midi value
-int midiPState[NUM_POTS] = {}; // Previous state of the midi value
+byte midiCState[NUM_POTS] = {}; // Current state of the midi value
+byte midiPState[NUM_POTS] = {}; // Previous state of the midi value
 
 boolean potMoving = true;           // If the potentiometer is moving
 unsigned long PTime[NUM_POTS] = {}; // Previously stored time
@@ -263,27 +263,27 @@ void buttons()
         if (buttonCstate[i] == LOW)
         {
           // ON
-          if (currentMessageType[i] == NOTE)
+          if (currentMessageType[i] == midiMessage::NOTE)
           {
             noteOn(currentChannel[i], currentProgram[i], 127); // channel, note, velocity}
           }
-          else if (currentMessageType[i] == CC)
+          else if (currentMessageType[i] == midiMessage::CC)
           {
             controlChange(currentChannel[i], currentProgram[i], 127);
           }
-          else if (currentMessageType[i] == PC)
+          else if (currentMessageType[i] == midiMessage::PC)
           {
             programChange(currentChannel[i], currentProgram[i]);
           }
-          else if (currentMessageType[i] == START)
+          else if (currentMessageType[i] == midiMessage::START)
           {
             midiStart(currentChannel[i]);
           }
-          else if (currentMessageType[i] == STOP)
+          else if (currentMessageType[i] == midiMessage::STOP)
           {
             midiStop(currentChannel[i]);
           }
-          else if (currentMessageType[i] == CONT)
+          else if (currentMessageType[i] == midiMessage::CONT)
           {
             midiCont(currentChannel[i]);
           }
@@ -291,11 +291,11 @@ void buttons()
         else
         {
           // OFF
-          if (currentMessageType[i] == NOTE)
+          if (currentMessageType[i] == midiMessage::NOTE)
           {
             noteOff(currentChannel[i], currentProgram[i]); // channel, note, velocity
           }
-          else if (currentMessageType[i] == CC)
+          else if (currentMessageType[i] == midiMessage::CC)
           {
             controlChange(currentChannel[i], currentProgram[i], 0);
           }
@@ -380,16 +380,16 @@ void rxMidiLeds()
   //////////////////////////
   // CLOCK
 
-  // receive midi clock (type 15 / channels: 10=start; 12=stop; 8=pulse / 24 pulses per quarter note)
+  // receive midi clock (type 0xF / channels: 0xA=start; 0xC=stop; 0x8=pulse / 24 pulses per quarter note)
 
   // receive a start
-  if (rxType == 15 && rxChannel == 10)
+  if (rxType == 0xF && rxChannel == 0xA)
   {
     clockCounter = 0;
   }
 
   // receive clock pulse
-  if (rxType == 15 && rxChannel == 8)
+  if (rxType == 0xF && rxChannel == 0x8)
   {
     clockCounter++;
   }
@@ -411,7 +411,7 @@ void rxMidiLeds()
   }
 
   // receive a stop -- turn led on permanently
-  if (rxType == 15 && rxChannel == 12)
+  if (rxType == 0xF && rxChannel == 0xC)
   {
     clockCounter = 0;
   }
@@ -437,7 +437,7 @@ void rxMidiLeds()
   // NOTEON or CC received
   if (rxType == 0x9 || rxType == 0xB)
   {
-    enum midiMessage receivedEnumType = rxType == 0x9 ? NOTE : CC;
+    enum midiMessage receivedEnumType = rxType == 0x9 ? midiMessage::NOTE : midiMessage::CC;
 
     // cycle through FASTLEDs
     for (int i = 1; i < NUM_LEDS; i++)
@@ -459,7 +459,7 @@ void rxMidiLeds()
     // cycle through FASTLEDs
     for (int i = 1; i < NUM_LEDS; i++)
     { // cycle through all addressable LEDs - dont use LED 0!!
-      if (rxPitch == currentProgram[i - 1] && currentMessageType[i - 1] == NOTE && rxChannel == currentChannel[i - 1])
+      if (rxPitch == currentProgram[i - 1] && currentMessageType[i - 1] == midiMessage::NOTE && rxChannel == currentChannel[i - 1])
       {                          // if receiving noteOFF AND pitch  matches LED
         leds[i] = CHSV(0, 0, 0); // turn LED off
         FastLED.show();
@@ -506,6 +506,33 @@ void serialDebug()
 
     Serial.print(" / Velocity: ");
     Serial.println(rxVelocity);
+  }
+}
+
+/////////////////////////////////////////////////////////////////////////////////////
+// MIDI messages via serial bus
+
+// Sends a midi signal on the serial bus
+// cmd = message type and channel, 0xFF is out of the range of 0x00 to 0x7F
+// and will not be sent, like in shorter commands
+void midiSerial(byte cmd, byte pitch = 0xFF, byte velocity = 0xFF)
+{
+  // IFNDEF because code generates an error squiggle in VSCode with the current arduino extension
+  // even if there is no problem with 'Serial1'
+#ifndef __INTELLISENSE__
+  Serial1.write(cmd);
+#endif
+  if (pitch <= 0x7F)
+  {
+#ifndef __INTELLISENSE__
+    Serial1.write(pitch);
+#endif
+  }
+  if (velocity <= 0x7F)
+  {
+#ifndef __INTELLISENSE__
+    Serial1.write(velocity);
+#endif
   }
 }
 
@@ -574,31 +601,4 @@ void programChange(byte channel, byte program)
   MidiUSB.sendMIDI(ccPacket);
 
   midiSerial(0xC0 | channel, program);
-}
-
-/////////////////////////////////////////////////////////////////////////////////////
-// MIDI messages via serial bus
-
-// Sends a midi signal on the serial bus
-// cmd = message type and channel, 0xFF is out of the range of 0x00 to 0x7F
-// and will not be sent, like in shorter commands
-void midiSerial(byte cmd, byte pitch = 0xFF, byte velocity = 0xFF)
-{
-  // IFNDEF because code generates an error squiggle in VSCode with the current arduino extension
-  // even if there is no problem with 'Serial1'
-#ifndef __INTELLISENSE__
-  Serial1.write(cmd);
-#endif
-  if (pitch <= 0x7F)
-  {
-#ifndef __INTELLISENSE__
-    Serial1.write(pitch);
-#endif
-  }
-  if (velocity <= 0x7F)
-  {
-#ifndef __INTELLISENSE__
-    Serial1.write(velocity);
-#endif
-  }
 }
