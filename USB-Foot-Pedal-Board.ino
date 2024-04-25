@@ -102,7 +102,7 @@ byte lastProgPin1State = 0xFF;
 byte lastProgPin2State = 0xFF;
 
 // stores current on/off state for toggles for all 3 programs
-bool currentlyOnStates[3][NUM_BUTTONS] = {};
+bool currentlyOnStates[NUM_PROGRAMS][NUM_BUTTONS] = {};
 
 // store foot switch state and time
 byte buttonPreviousState[NUM_BUTTONS] = {};       // stores the buttons prev values
