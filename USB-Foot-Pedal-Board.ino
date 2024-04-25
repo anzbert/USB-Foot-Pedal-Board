@@ -33,6 +33,7 @@ struct program // Store Program settings
   byte expressionChannel;
   byte values[NUM_BUTTONS];
   midiMessage types[NUM_BUTTONS];
+  bool toggle[NUM_BUTTONS];
   byte channels[NUM_BUTTONS];
 };
 
@@ -48,7 +49,8 @@ const program PROG0 = {
     .expressionCC = 11,
     .expressionChannel = 0,
     .values = {88, 89, 91, 87, 0, 85, 100, 101},
-    .types = {CC, NOTE, CC, CC, PC, CC, CC, CC},
+    .types = {CC, CC, CC, CC, PC, CC, CC, CC},
+    .toggle = {0, 0, 0, 0, 0, 0, 0, 0},
     .channels = {0, 0, 0, 0, 0, 0, 0, 0},
 };
 
@@ -58,6 +60,7 @@ const program PROG1 = {
     .expressionChannel = 8,
     .values = {24, 25, 26, 27, 28, 29, 30, 31},
     .types = {NOTE, NOTE, NOTE, NOTE, NOTE, NOTE, NOTE, NOTE},
+    .toggle = {0, 0, 0, 0, 0, 0, 0, 0},
     .channels = {8, 8, 8, 8, 8, 8, 8, 8},
 };
 
@@ -67,6 +70,7 @@ const program PROG2 = {
     .expressionChannel = 9,
     .values = {0, 1, 2, 3, 4, 5, 6, 7},
     .types = {NOTE, NOTE, NOTE, NOTE, NOTE, NOTE, NOTE, NOTE},
+    .toggle = {0, 0, 0, 0, 0, 0, 0, 0},
     .channels = {9, 9, 9, 9, 9, 9, 9, 9},
 };
 
@@ -89,11 +93,16 @@ const unsigned int DEBOUNCE_DELAY = 50; // debounce time in ms; increase if the 
 
 // Holds LEDS state
 CRGB leds[NUM_LEDS] = {0};
+// byte lastBrightness[NUM_LEDS] = {0};
+bool lastLedState[NUM_LEDS] = {0};
 
 // stores currently selected program
 byte currentProg = 0x00;
 byte lastProgPin1State = 0xFF;
 byte lastProgPin2State = 0xFF;
+
+// stores current on/off state for toggles for all 3 programs
+bool currentlyOnStates[3][NUM_BUTTONS] = {0};
 
 // store foot switch state and time
 byte buttonPreviousState[NUM_BUTTONS] = {0};       // stores the buttons prev values
@@ -153,7 +162,9 @@ void loop()
 
   sendExpressionPedalMidi();
 
-  receiveMidi();
+  receiveUsbMidi();
+
+  updateToggleState();
 
   updateLeds();
 
@@ -200,9 +211,17 @@ void sendFootSwitchMidi()
 
         if (buttonCurrentState == LOW) // BUTTON PUSHED
         {
-          sendMidi(PROGRAMS[currentProg].types[i], PROGRAMS[currentProg].channels[i], PROGRAMS[currentProg].values[i], 127);
+          byte sendValue = 127;
+
+          if (PROGRAMS[currentProg].toggle[i])
+          {
+            currentlyOnStates[currentProg][i] = !currentlyOnStates[currentProg][i];
+            sendValue = currentlyOnStates[currentProg][i] ? 127 : 0;
+          }
+
+          sendMidi(PROGRAMS[currentProg].types[i], PROGRAMS[currentProg].channels[i], PROGRAMS[currentProg].values[i], sendValue);
         }
-        else // BUTTON RELEASED
+        else if (PROGRAMS[currentProg].toggle[i] == false) // BUTTON RELEASED
         {
           if (PROGRAMS[currentProg].types[i] == midiMessage::NOTE)
           {
@@ -251,7 +270,7 @@ void sendExpressionPedalMidi()
 
 /////////////////////////////////////////////////
 ///////////// REFRESH RECEIVED MIDI DATA BUFFER
-void receiveMidi()
+void receiveUsbMidi()
 {
   // MidiUSB library commands
   midiEventPacket_t rx;
@@ -265,6 +284,27 @@ void receiveMidi()
   rxMidi.pitch = rx.byte2;      // Received pitch - midi-button-and-led first note setting
   rxMidi.velocity = rx.byte3;   // Velocity variable - can be used, for example, for brightness
   rxMidi.usbHeader = rx.header; // get usb header
+}
+
+void updateToggleState()
+{
+  if (rxMidi.type == 0x9 || rxMidi.type == 0xB || rxMidi.type == 0x8)
+  {
+    for (byte i = 0; i < NUM_BUTTONS; i++)
+    {
+      if (rxMidi.pitch != PROGRAMS[currentProg].values[i])
+        continue;
+
+      if (rxMidi.type == 0x8 || rxMidi.velocity == 0)
+      {
+        currentlyOnStates[currentProg][i] = false;
+      }
+      else
+      {
+        currentlyOnStates[currentProg][i] = true;
+      }
+    }
+  }
 }
 
 void updateLeds()
@@ -285,17 +325,16 @@ void updateLeds()
     else if (rxMidi.channel == 0x8) // receive clock pulse
     {
       midiClockCounter++;
+      if (midiClockCounter >= 24) // mid signal transmits 24 pulses per quarter note
+      {
+        midiClockCounter = 0;
+      }
       refreshLED = true;
     }
   }
 
   if (refreshLED)
   {
-    if (midiClockCounter >= 24) // mid signal transmits 24 pulses per quarter note
-    {
-      midiClockCounter = 0;
-    }
-
     if (midiClockCounter == 0)
     {
       leds[0] = CHSV(PROGRAMS[currentProg].colorHue, 255, 255); // LED ON
@@ -308,52 +347,25 @@ void updateLeds()
     }
   }
 
-  ////////////////////////////////////////
-  // ALL CHANNEL SPECIFIC MIDI RX BELOW THIS GUARD
-
-  bool matchAnyChannel = false;
-
-  if (rxMidi.channel == PROGRAMS[currentProg].expressionChannel)
-    matchAnyChannel = true;
-
-  for (byte i = 0; i < NUM_BUTTONS; i = i + 1)
+  /////////////////////////////
+  // check toggle state
+  for (byte b = 0; b < NUM_LEDS; b++)
   {
-    if (rxMidi.channel == PROGRAMS[currentProg].channels[i])
-      matchAnyChannel = true;
-  }
-
-  if (!matchAnyChannel)
-    return;
-
-  //////////////////
-  // NOTEON or CC received
-  if (rxMidi.type == 0x9 || rxMidi.type == 0xB)
-  {
-    for (byte led = 1; led < NUM_LEDS; led++)
+    if (currentlyOnStates[currentProg][b] != lastLedState[b])
     {
-      byte b = led - 1; // button
+      byte led = b + 1;
 
-      if (rxMidi.pitch == PROGRAMS[currentProg].values[b] && rxMidi.channel == PROGRAMS[currentProg].channels[b])
+      if (currentlyOnStates[currentProg][b])
       {
-        leds[led] = rxMidi.velocity == 0 ? CHSV(0, 0, 0) : CHSV(PROGRAMS[currentProg].colorHue, 255, map(rxMidi.velocity, 0, 127, 0, 255));
-        FastLED.show();
+        leds[led] = CHSV(PROGRAMS[currentProg].colorHue, 255, 255);
       }
-    }
-  }
-
-  ///////////////////
-  // NOTEOFF received
-  if (rxMidi.type == 0x8)
-  {
-    for (byte led = 1; led < NUM_LEDS; led++)
-    {
-      byte b = led - 1; // button
-
-      if (rxMidi.pitch == PROGRAMS[currentProg].values[b] && PROGRAMS[currentProg].types[b] == midiMessage::NOTE && rxMidi.channel == PROGRAMS[currentProg].channels[b])
+      else
       {
         leds[led] = CHSV(0, 0, 0);
-        FastLED.show();
       }
+
+      FastLED.show();
+      lastLedState[b] = currentlyOnStates[currentProg][b];
     }
   }
 }
