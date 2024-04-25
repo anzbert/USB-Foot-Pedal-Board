@@ -28,6 +28,7 @@ unsigned long lastDebounceTime[NUM_BUTTONS] = {}; // the last time the pin was t
 enum midiMessage // Type of Midi Message
 {
   NOTE,
+  NOTE_OFF,
   CC,
   PC, // 0-127 (equals Midi Programs 1-128)
   START,
@@ -103,11 +104,14 @@ byte exprPreviousMidiValue;
 /////////////////
 // rxMidi
 
-byte rxUSB = 0;      // usb header
-byte rxChannel = 0;  // midi channel
-byte rxType = 0;     // midi data type
-byte rxPitch = 0;    // midi pitch
-byte rxVelocity = 0; // midi velocity
+struct rxMidi
+{
+  byte usbHeader = 0x00;
+  byte channel = 0x00;
+  byte type = 0x00;
+  byte pitch = 0x00;
+  byte velocity = 0x00;
+} rxMidi;
 
 byte midiClockCounter = 0;
 
@@ -194,44 +198,20 @@ void sendFootSwitchMidi()
         if (buttonCurrentState == LOW)
         {
           // ON
-          if (PROGRAMS[currentProg].types[i] == midiMessage::NOTE)
-          {
-            noteOn(PROGRAMS[currentProg].channels[i], PROGRAMS[currentProg].values[i], 127);
-          }
-          else if (PROGRAMS[currentProg].types[i] == midiMessage::CC)
-          {
-            controlChange(PROGRAMS[currentProg].channels[i], PROGRAMS[currentProg].values[i], 127);
-          }
-          else if (PROGRAMS[currentProg].types[i] == midiMessage::PC)
-          {
-            programChange(PROGRAMS[currentProg].channels[i], PROGRAMS[currentProg].values[i]);
-          }
-          else if (PROGRAMS[currentProg].types[i] == midiMessage::START)
-          {
-            midiStart(PROGRAMS[currentProg].channels[i]);
-          }
-          else if (PROGRAMS[currentProg].types[i] == midiMessage::STOP)
-          {
-            midiStop(PROGRAMS[currentProg].channels[i]);
-          }
-          else if (PROGRAMS[currentProg].types[i] == midiMessage::CONT)
-          {
-            midiCont(PROGRAMS[currentProg].channels[i]);
-          }
+          sendMidi(PROGRAMS[currentProg].types[i], PROGRAMS[currentProg].channels[i], PROGRAMS[currentProg].values[i], 127);
         }
         else
         {
           // OFF
           if (PROGRAMS[currentProg].types[i] == midiMessage::NOTE)
           {
-            noteOff(PROGRAMS[currentProg].channels[i], PROGRAMS[currentProg].values[i]);
+            sendMidi(midiMessage::NOTE_OFF, PROGRAMS[currentProg].channels[i], PROGRAMS[currentProg].values[i], 0);
           }
-          else if (PROGRAMS[currentProg].types[i] == midiMessage::CC)
+          if (PROGRAMS[currentProg].types[i] == midiMessage::CC)
           {
-            controlChange(PROGRAMS[currentProg].channels[i], PROGRAMS[currentProg].values[i], 0);
+            sendMidi(midiMessage::CC, PROGRAMS[currentProg].channels[i], PROGRAMS[currentProg].values[i], 0);
           }
         }
-        MidiUSB.flush(); // send midi buffer
 
         buttonPreviousState[i] = buttonCurrentState;
       }
@@ -281,8 +261,8 @@ void sendExpressionPedalMidi()
   }
 }
 
-/////////////////////////
-///////////// midiLeds
+/////////////////////////////////////////////////
+///////////// REFRESH RECEIVED MIDI DATA BUFFER
 void receiveMidi()
 {
   // MidiUSB library commands
@@ -290,13 +270,13 @@ void receiveMidi()
   rx = MidiUSB.read();
 
   // Bitshift to separate rx.byte1 (byte = 8bit) into first 4bit (TYPE), and second 4bit (Channel)
-  rxChannel = rx.byte1 & B00001111; // get channel
+  rxMidi.channel = rx.byte1 & B00001111; // get channel
 
   // Bitshift to separate rx.byte1 (byte = 8bit) into first 4bit (TYPE), and second 4bit (Channel)
-  rxType = rx.byte1 >> 4;
-  rxPitch = rx.byte2;    // Received pitch - midi-button-and-led first note setting
-  rxVelocity = rx.byte3; // Velocity variable - can be used, for example, for brightness
-  rxUSB = rx.header;     // get usb header
+  rxMidi.type = rx.byte1 >> 4;
+  rxMidi.pitch = rx.byte2;      // Received pitch - midi-button-and-led first note setting
+  rxMidi.velocity = rx.byte3;   // Velocity variable - can be used, for example, for brightness
+  rxMidi.usbHeader = rx.header; // get usb header
 }
 
 void updateLeds()
@@ -307,14 +287,14 @@ void updateLeds()
 
   bool refreshLED = false;
 
-  if (rxType == 0xF)
+  if (rxMidi.type == 0xF)
   {
-    if (rxChannel == 0xA || rxChannel == 0xC) // receive a start or stop
+    if (rxMidi.channel == 0xA || rxMidi.channel == 0xC) // receive a start or stop
     {
       midiClockCounter = 0;
       refreshLED = true;
     }
-    else if (rxChannel == 0x8) // receive clock pulse
+    else if (rxMidi.channel == 0x8) // receive clock pulse
     {
       midiClockCounter++;
       refreshLED = true;
@@ -345,12 +325,12 @@ void updateLeds()
 
   bool matchAnyChannel = false;
 
-  if (rxChannel == PROGRAMS[currentProg].expressionChannel)
+  if (rxMidi.channel == PROGRAMS[currentProg].expressionChannel)
     matchAnyChannel = true;
 
   for (byte i = 0; i < NUM_BUTTONS; i = i + 1)
   {
-    if (rxChannel == PROGRAMS[currentProg].channels[i])
+    if (rxMidi.channel == PROGRAMS[currentProg].channels[i])
       matchAnyChannel = true;
   }
 
@@ -359,17 +339,17 @@ void updateLeds()
 
   //////////////////
   // NOTEON or CC received
-  if (rxType == 0x9 || rxType == 0xB)
+  if (rxMidi.type == 0x9 || rxMidi.type == 0xB)
   {
-    enum midiMessage receivedEnumType = rxType == 0x9 ? midiMessage::NOTE : midiMessage::CC;
+    enum midiMessage receivedEnumType = rxMidi.type == 0x9 ? midiMessage::NOTE : midiMessage::CC;
 
     // cycle through FASTLEDs
     for (int i = 1; i < NUM_LEDS; i++)
     {
       // cycle through all addressable LEDs - dont use LED 0!!
-      if (rxPitch == PROGRAMS[currentProg].values[i - 1] && PROGRAMS[currentProg].types[i - 1] == receivedEnumType && rxChannel == PROGRAMS[currentProg].channels[i - 1])
+      if (rxMidi.pitch == PROGRAMS[currentProg].values[i - 1] && PROGRAMS[currentProg].types[i - 1] == receivedEnumType && rxMidi.channel == PROGRAMS[currentProg].channels[i - 1])
       { // if receiving noteON AND pitch matches LED
-        int mapvelocity = map(rxVelocity, 0, 127, 0, 255);
+        int mapvelocity = map(rxMidi.velocity, 0, 127, 0, 255);
         leds[i] = CHSV(mapvelocity, 255, 255); // control led by hue
         FastLED.show();
       }
@@ -378,13 +358,13 @@ void updateLeds()
 
   ///////////////////
   // NOTEOFF received
-  if (rxType == 0x8)
+  if (rxMidi.type == 0x8)
   {
     // cycle through FASTLEDs
     for (int i = 1; i < NUM_LEDS; i++)
     {
       // cycle through all addressable LEDs - dont use LED 0!!
-      if (rxPitch == PROGRAMS[currentProg].values[i - 1] && PROGRAMS[currentProg].types[i - 1] == midiMessage::NOTE && rxChannel == PROGRAMS[currentProg].channels[i - 1])
+      if (rxMidi.pitch == PROGRAMS[currentProg].values[i - 1] && PROGRAMS[currentProg].types[i - 1] == midiMessage::NOTE && rxMidi.channel == PROGRAMS[currentProg].channels[i - 1])
       {                          // if receiving noteOFF AND pitch  matches LED
         leds[i] = CHSV(0, 0, 0); // turn LED off
         FastLED.show();
@@ -396,13 +376,13 @@ void updateLeds()
 void serialDebug()
 {
   // DEBUG raw rxMidi data
-  if (rxUSB != 0)
+  if (rxMidi.usbHeader != 0)
   {
     Serial.print("USB-Header: ");
-    Serial.print(rxUSB, HEX);
+    Serial.print(rxMidi.usbHeader, HEX);
 
     Serial.print(" / Type: ");
-    switch (rxType)
+    switch (rxMidi.type)
     {
     case 0x08:
       Serial.print("NoteOFF");
@@ -418,19 +398,19 @@ void serialDebug()
       break;
     default:
       Serial.print("[");
-      Serial.print(rxType);
+      Serial.print(rxMidi.type);
       Serial.print("]");
       break;
     }
 
     Serial.print(" / Channel: ");
-    Serial.print(rxChannel);
+    Serial.print(rxMidi.channel);
 
     Serial.print(" / Pitch: ");
-    Serial.print(rxPitch);
+    Serial.print(rxMidi.pitch);
 
     Serial.print(" / Velocity: ");
-    Serial.println(rxVelocity);
+    Serial.println(rxMidi.velocity);
   }
 }
 
@@ -459,38 +439,34 @@ void midiSerial(byte cmd, byte pitch = 0xFF, byte velocity = 0xFF)
   }
 }
 
-//////////////////////////////////////////////////////////////////////////////
-// Arduino (pro)micro midi functions MIDIUSB Library for sending Midi Messages
+/////////////////////////////////////////////////////////////////////////////////////
+// Functions for sending Midi Messages
 
 void midiStart(byte channel)
 {
   midiEventPacket_t ccPacket = {0x0F, 0xFA | channel, 0x00, 0x00};
-  MidiUSB.sendMIDI(ccPacket);
-
+  MidiUSB.sendMIDI(ccPacket); // queue message to buffer
   midiSerial(0xFA | channel);
 }
 
 void midiStop(byte channel)
 {
   midiEventPacket_t ccPacket = {0x0F, 0xFC | channel, 0x00, 0x00};
-  MidiUSB.sendMIDI(ccPacket);
-
+  MidiUSB.sendMIDI(ccPacket); // queue message to buffer
   midiSerial(0xFC | channel);
 }
 
 void midiCont(byte channel)
 {
   midiEventPacket_t ccPacket = {0x0F, 0xFB | channel, 0x00, 0x00};
-  MidiUSB.sendMIDI(ccPacket);
-
+  MidiUSB.sendMIDI(ccPacket); // queue message to buffer
   midiSerial(0xFB | channel);
 }
 
 void noteOn(byte channel, byte pitch, byte velocity)
 {
   midiEventPacket_t noteOnPacket = {0x09, 0x90 | channel, pitch, velocity};
-  MidiUSB.sendMIDI(noteOnPacket);
-
+  MidiUSB.sendMIDI(noteOnPacket); // queue message to buffer
   midiSerial(0x90 | channel, pitch, velocity);
 }
 
@@ -498,8 +474,7 @@ void noteOff(byte channel, byte pitch)
 {
   // midiEventPacket_t noteOffPacket = {0x08, 0x80 | channel, pitch, 0}; // note off message
   midiEventPacket_t noteOnPacket = {0x09, 0x90 | channel, pitch, 0}; // note on with velocity 0
-  MidiUSB.sendMIDI(noteOnPacket);
-
+  MidiUSB.sendMIDI(noteOnPacket);                                    // queue message to buffer
   // midiSerial(0x80 | channel, pitch, 0); // note off message
   midiSerial(0x90 | channel, pitch, 0); // note on with velocity 0
 }
@@ -507,15 +482,42 @@ void noteOff(byte channel, byte pitch)
 void controlChange(byte channel, byte control, byte value)
 {
   midiEventPacket_t ccPacket = {0x0B, 0xB0 | channel, control, value};
-  MidiUSB.sendMIDI(ccPacket);
-
+  MidiUSB.sendMIDI(ccPacket); // queue message to buffer
   midiSerial(0xB0 | channel, control, value);
 }
 
 void programChange(byte channel, byte program)
 {
   midiEventPacket_t ccPacket = {0x0C, 0xC0 | channel, program, 0x00};
-  MidiUSB.sendMIDI(ccPacket);
-
+  MidiUSB.sendMIDI(ccPacket); // queue message to buffer
   midiSerial(0xC0 | channel, program);
 }
+
+void sendMidi(midiMessage type, byte channel, byte val1, byte val2)
+{
+  switch (type)
+  {
+  case midiMessage::NOTE:
+    noteOn(channel, val1, val2);
+    break;
+  case midiMessage::NOTE_OFF:
+    noteOff(channel, val1);
+    break;
+  case midiMessage::CC:
+    controlChange(channel, val1, val2);
+    break;
+  case midiMessage::PC:
+    programChange(channel, val1);
+    break;
+  case midiMessage::START:
+    midiStart(channel);
+    break;
+  case midiMessage::STOP:
+    midiStop(channel);
+    break;
+  case midiMessage::CONT:
+    midiCont(channel);
+    break;
+  }
+  MidiUSB.flush(); // send midi buffer
+};
