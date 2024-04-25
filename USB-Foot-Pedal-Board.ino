@@ -23,8 +23,9 @@ const unsigned int DEBOUNCE_DELAY = 50; // debounce time in ms; increase if the 
 byte buttonPreviousState[NUM_BUTTONS] = {};       // stores the button previous value
 unsigned long lastDebounceTime[NUM_BUTTONS] = {}; // the last time the pin was toggled
 
-// MIDI MESSAGE TYPES
-enum midiMessage
+// TYPE DEFS
+
+enum midiMessage // Type of Midi Message
 {
   NOTE,
   CC,
@@ -34,45 +35,56 @@ enum midiMessage
   CONT
 };
 
+struct program // Program settings
+{
+  byte color;
+  byte expressionCC;
+  byte expressionChannel;
+  byte values[NUM_BUTTONS];
+  midiMessage types[NUM_BUTTONS];
+  byte channels[NUM_BUTTONS];
+};
+
 // ////////////////////////////////////////////////////////////////////////////////////
 // ////////////////////////////////////////////////////////////////////////////////////
 // PROGRAM SETTINGS
 // ////////////////////////////////////////////////////////////////////////////////////
 
-// Main Program Midi Channel in 0-15 (equals Midi Channels 1-16)
-const byte CH1 = 0;
-const byte CH2 = 8;
-const byte CH3 = 8;
+// // Buttons: First 6 values for internal foot switches and last 2 for external
 
-// Buttons: First 6 values for internal foot switches and last 2 for external
+const program PROG0 = {
+    .color = HUE_GREEN,
+    .expressionCC = 11,
+    .expressionChannel = 0,
+    .values = {88, 89, 91, 87, 0, 85, 100, 101},
+    .types = {CC, CC, CC, CC, PC, CC, CC, CC},
+    .channels = {0, 0, 0, 0, 0, 0, 0, 0},
+};
 
-const byte PROG1_COLOR = HUE_GREEN;
-const byte PROG1_VALUES[NUM_BUTTONS] = {88, 89, 91, 87, 0, 85, 100, 101};
-const midiMessage PROG1_TYPES[NUM_BUTTONS] = {CC, CC, CC, CC, PC, CC, CC, CC};
-const byte PROG1_CHANNELS[NUM_BUTTONS] = {CH1, CH1, CH1, CH1, CH1, CH1, CH1, CH1};
+const program PROG1 = {
+    .color = HUE_RED,
+    .expressionCC = 11,
+    .expressionChannel = 8,
+    .values = {24, 25, 26, 27, 28, 29, 30, 31},
+    .types = {NOTE, NOTE, NOTE, NOTE, NOTE, NOTE, NOTE, NOTE},
+    .channels = {8, 8, 8, 8, 8, 8, 8, 8},
+};
 
-const byte PROG2_COLOR = HUE_RED;
-const byte PROG2_VALUES[NUM_BUTTONS] = {24, 25, 26, 27, 28, 29, 30, 31};
-const midiMessage PROG2_TYPES[NUM_BUTTONS] = {NOTE, NOTE, NOTE, NOTE, NOTE, NOTE, NOTE, NOTE};
-const byte PROG2_CHANNELS[NUM_BUTTONS] = {CH2, CH2, CH2, CH2, CH2, CH2, CH2, CH2};
-
-const byte PROG3_COLOR = HUE_BLUE;
-const byte PROG3_VALUES[NUM_BUTTONS] = {0, 1, 2, 3, 4, 5, 6, 7};
-const midiMessage PROG3_TYPES[NUM_BUTTONS] = {NOTE, NOTE, NOTE, NOTE, NOTE, NOTE, NOTE, NOTE};
-const byte PROG3_CHANNELS[NUM_BUTTONS] = {CH3, CH3, CH3, CH3, CH3, CH3, CH3, CH3};
-
-// EXPRESSION PEDAL CC
-const byte EXPRESSION_CC = 11;
+const program PROG2 = {
+    .color = HUE_BLUE,
+    .expressionCC = 11,
+    .expressionChannel = 9,
+    .values = {0, 1, 2, 3, 4, 5, 6, 7},
+    .types = {NOTE, NOTE, NOTE, NOTE, NOTE, NOTE, NOTE, NOTE},
+    .channels = {9, 9, 9, 9, 9, 9, 9, 9},
+};
 
 // ////////////////////////////////////////////////////////////////////////////////////
 // ////////////////////////////////////////////////////////////////////////////////////
 
-byte currentColor;
-byte currentExprChannel;
-enum midiMessage currentMessageType[NUM_BUTTONS] = {};
-byte currentProgram[NUM_BUTTONS] = {};
-byte currentChannel[NUM_BUTTONS] = {};
+const program PROGRAMS[] = {PROG0, PROG1, PROG2};
 
+byte currentProg = 0;
 byte lastProgPin1State = 0xFF;
 byte lastProgPin2State = 0xFF;
 
@@ -85,7 +97,7 @@ const unsigned int VAR_THRESHOLD = 10; // Threshold for the potentiometer signal
 
 int potPreviousState;
 unsigned long potPreviousTime;
-boolean potStillMoving = true;
+bool potStillMoving = true;
 byte exprPreviousMidiValue;
 
 /////////////////
@@ -97,7 +109,7 @@ byte rxType = 0;     // midi data type
 byte rxPitch = 0;    // midi pitch
 byte rxVelocity = 0; // midi velocity
 
-byte midiClockCounter;
+byte midiClockCounter = 0;
 
 /////////////////////////////////////////////////////////////////////
 /////////////////// !! SETUP !! /////////////////////////////////////
@@ -121,7 +133,7 @@ void setup()
   FastLED.addLeds<WS2812B, LEDS_DATA_PIN>(leds, NUM_LEDS); // init LEDs
   FastLED.setBrightness(8);                                // set Brightness (0-255)
   FastLED.clear();                                         // all LEDs off
-  FastLED.show();                                          // refresh
+  FastLED.show();                                          // refreshLed
 }
 
 //////////////////////////////////////////////////////////////////
@@ -151,56 +163,21 @@ void updateProgram()
 
   if (progPin1State != lastProgPin1State || progPin2State != lastProgPin2State)
   {
-
-    // set to PROG1
     if (progPin1State == 1 && progPin2State == 0)
-    {
+      currentProg = 0;
+    else if (progPin1State == 1 && progPin2State == 1)
+      currentProg = 1;
+    else if (progPin1State == 0 && progPin2State == 1)
+      currentProg = 2;
 
-      for (byte i = 0; i < NUM_BUTTONS; i = i + 1)
-      {
-        currentProgram[i] = PROG1_VALUES[i];
-        currentMessageType[i] = PROG1_TYPES[i];
-        currentChannel[i] = PROG1_CHANNELS[i];
-      }
-      currentExprChannel = CH1;
-      currentColor = PROG1_COLOR;
-    }
-
-    // set to PROG2
-    if (progPin1State == 1 && progPin2State == 1)
-    {
-
-      for (byte i = 0; i < NUM_BUTTONS; i = i + 1)
-      {
-        currentProgram[i] = PROG2_VALUES[i];
-        currentMessageType[i] = PROG2_TYPES[i];
-        currentChannel[i] = PROG2_CHANNELS[i];
-      }
-      currentExprChannel = CH2;
-      currentColor = PROG2_COLOR;
-    }
-
-    // set to PROG3
-    if (progPin1State == 0 && progPin2State == 1)
-    {
-
-      for (byte i = 0; i < NUM_BUTTONS; i = i + 1)
-      {
-        currentProgram[i] = PROG3_VALUES[i];
-        currentMessageType[i] = PROG3_TYPES[i];
-        currentChannel[i] = PROG3_CHANNELS[i];
-      }
-      currentExprChannel = CH3;
-      currentColor = PROG3_COLOR;
-    }
-
-    leds[0] = CHSV(currentColor, 255, 255); // change PROG indicator led colour depending on program
+    leds[0] = CHSV(PROGRAMS[currentProg].color, 255, 255); // change PROG indicator led colour depending on program
     FastLED.show();
 
     lastProgPin1State = progPin1State;
     lastProgPin2State = progPin2State;
   }
 }
+
 // BUTTONS
 void sendFootSwitchMidi()
 {
@@ -217,41 +194,41 @@ void sendFootSwitchMidi()
         if (buttonCurrentState == LOW)
         {
           // ON
-          if (currentMessageType[i] == midiMessage::NOTE)
+          if (PROGRAMS[currentProg].types[i] == midiMessage::NOTE)
           {
-            noteOn(currentChannel[i], currentProgram[i], 127); // channel, note, velocity}
+            noteOn(PROGRAMS[currentProg].channels[i], PROGRAMS[currentProg].values[i], 127);
           }
-          else if (currentMessageType[i] == midiMessage::CC)
+          else if (PROGRAMS[currentProg].types[i] == midiMessage::CC)
           {
-            controlChange(currentChannel[i], currentProgram[i], 127);
+            controlChange(PROGRAMS[currentProg].channels[i], PROGRAMS[currentProg].values[i], 127);
           }
-          else if (currentMessageType[i] == midiMessage::PC)
+          else if (PROGRAMS[currentProg].types[i] == midiMessage::PC)
           {
-            programChange(currentChannel[i], currentProgram[i]);
+            programChange(PROGRAMS[currentProg].channels[i], PROGRAMS[currentProg].values[i]);
           }
-          else if (currentMessageType[i] == midiMessage::START)
+          else if (PROGRAMS[currentProg].types[i] == midiMessage::START)
           {
-            midiStart(currentChannel[i]);
+            midiStart(PROGRAMS[currentProg].channels[i]);
           }
-          else if (currentMessageType[i] == midiMessage::STOP)
+          else if (PROGRAMS[currentProg].types[i] == midiMessage::STOP)
           {
-            midiStop(currentChannel[i]);
+            midiStop(PROGRAMS[currentProg].channels[i]);
           }
-          else if (currentMessageType[i] == midiMessage::CONT)
+          else if (PROGRAMS[currentProg].types[i] == midiMessage::CONT)
           {
-            midiCont(currentChannel[i]);
+            midiCont(PROGRAMS[currentProg].channels[i]);
           }
         }
         else
         {
           // OFF
-          if (currentMessageType[i] == midiMessage::NOTE)
+          if (PROGRAMS[currentProg].types[i] == midiMessage::NOTE)
           {
-            noteOff(currentChannel[i], currentProgram[i]); // channel, note, velocity
+            noteOff(PROGRAMS[currentProg].channels[i], PROGRAMS[currentProg].values[i]);
           }
-          else if (currentMessageType[i] == midiMessage::CC)
+          else if (PROGRAMS[currentProg].types[i] == midiMessage::CC)
           {
-            controlChange(currentChannel[i], currentProgram[i], 0);
+            controlChange(PROGRAMS[currentProg].channels[i], PROGRAMS[currentProg].values[i], 0);
           }
         }
         MidiUSB.flush(); // send midi buffer
@@ -294,7 +271,7 @@ void sendExpressionPedalMidi()
     // If the potentiometer is still moving, send the change control
     if (exprPreviousMidiValue != exprCurrentMidiValue)
     {
-      controlChange(currentExprChannel, EXPRESSION_CC, exprCurrentMidiValue);
+      controlChange(PROGRAMS[currentProg].expressionChannel, PROGRAMS[currentProg].expressionCC, exprCurrentMidiValue);
       MidiUSB.flush();
 
       // Serial.println(exprCurrentMidiValue);
@@ -326,40 +303,41 @@ void updateLeds()
 {
   //////////////////////////
   // CLOCK
-
   // receive midi clock (type 0xF / channels: 0xA=start; 0xC=stop; 0x8=pulse / 24 pulses per quarter note)
 
-  // receive a start
-  if (rxType == 0xF && rxChannel == 0xA)
+  bool refreshLED = false;
+
+  if (rxType == 0xF)
   {
-    midiClockCounter = 0;
+    if (rxChannel == 0xA || rxChannel == 0xC) // receive a start or stop
+    {
+      midiClockCounter = 0;
+      refreshLED = true;
+    }
+    else if (rxChannel == 0x8) // receive clock pulse
+    {
+      midiClockCounter++;
+      refreshLED = true;
+    }
   }
 
-  // receive clock pulse
-  if (rxType == 0xF && rxChannel == 0x8)
+  if (refreshLED)
   {
-    midiClockCounter++;
-  }
+    if (midiClockCounter >= 24) // mid signal transmits 24 pulses per quarter note
+    {
+      midiClockCounter = 0;
+    }
 
-  switch (midiClockCounter)
-  {
-  case 0:
-    leds[0] = CHSV(currentColor, 255, 255); // change led colour depending on program
-    FastLED.show();
-    break;
-  case 2:                    // length of each blink in midi pulses (default:2)
-    leds[0] = CHSV(0, 0, 0); // change led colour depending on program
-    FastLED.show();
-    break;
-  case 24: // mid signal transmits 24 pulses per quarter note
-    midiClockCounter = 0;
-    break;
-  }
-
-  // receive a stop -- turn led on permanently
-  if (rxType == 0xF && rxChannel == 0xC)
-  {
-    midiClockCounter = 0;
+    if (midiClockCounter == 0)
+    {
+      leds[0] = CHSV(PROGRAMS[currentProg].color, 255, 255); // LED ON
+      FastLED.show();
+    }
+    else if (midiClockCounter == 2) // length of each blink in midi pulses (default:2)
+    {
+      leds[0] = CHSV(0, 0, 0); // LED OFF
+      FastLED.show();
+    }
   }
 
   ////////////////////////////////////////
@@ -367,12 +345,12 @@ void updateLeds()
 
   bool matchAnyChannel = false;
 
-  if (rxChannel == currentExprChannel)
+  if (rxChannel == PROGRAMS[currentProg].expressionChannel)
     matchAnyChannel = true;
 
   for (byte i = 0; i < NUM_BUTTONS; i = i + 1)
   {
-    if (rxChannel == currentChannel[i])
+    if (rxChannel == PROGRAMS[currentProg].channels[i])
       matchAnyChannel = true;
   }
 
@@ -387,9 +365,9 @@ void updateLeds()
 
     // cycle through FASTLEDs
     for (int i = 1; i < NUM_LEDS; i++)
-    { // cycle through all addressable LEDs - dont use LED 0!!
-
-      if (rxPitch == currentProgram[i - 1] && currentMessageType[i - 1] == receivedEnumType && rxChannel == currentChannel[i - 1])
+    {
+      // cycle through all addressable LEDs - dont use LED 0!!
+      if (rxPitch == PROGRAMS[currentProg].values[i - 1] && PROGRAMS[currentProg].types[i - 1] == receivedEnumType && rxChannel == PROGRAMS[currentProg].channels[i - 1])
       { // if receiving noteON AND pitch matches LED
         int mapvelocity = map(rxVelocity, 0, 127, 0, 255);
         leds[i] = CHSV(mapvelocity, 255, 255); // control led by hue
@@ -404,8 +382,9 @@ void updateLeds()
   {
     // cycle through FASTLEDs
     for (int i = 1; i < NUM_LEDS; i++)
-    { // cycle through all addressable LEDs - dont use LED 0!!
-      if (rxPitch == currentProgram[i - 1] && currentMessageType[i - 1] == midiMessage::NOTE && rxChannel == currentChannel[i - 1])
+    {
+      // cycle through all addressable LEDs - dont use LED 0!!
+      if (rxPitch == PROGRAMS[currentProg].values[i - 1] && PROGRAMS[currentProg].types[i - 1] == midiMessage::NOTE && rxChannel == PROGRAMS[currentProg].channels[i - 1])
       {                          // if receiving noteOFF AND pitch  matches LED
         leds[i] = CHSV(0, 0, 0); // turn LED off
         FastLED.show();
