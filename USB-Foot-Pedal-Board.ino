@@ -78,10 +78,10 @@ const byte NUM_PROGRAMS = 3;
 const program PROGRAMS[NUM_PROGRAMS] = {PROG0, PROG1, PROG2};
 
 // EXPRESSION PEDAL SETTINGS
-const unsigned int ANALOG_MIN = 60;
-const unsigned int ANALOG_MAX = 1023;
-const unsigned int TIMEOUT = 800;      // Amount of time the potentiometer will be read after it exceeds the varThreshold
-const unsigned int VAR_THRESHOLD = 10; // Threshold for the potentiometer signal variation
+const unsigned int ANALOG_MIN = 49;
+const unsigned int ANALOG_MAX = 1020;
+const unsigned int TIMEOUT = 200;      // Amount of time the potentiometer will be read after it exceeds the varThreshold
+const unsigned int VAR_THRESHOLD = 16; // Threshold for the potentiometer signal variation
 
 // FOOT SWITCH SETTINGS
 const unsigned int DEBOUNCE_DELAY = 50; // debounce time in ms; increase if the output flickers
