@@ -20,8 +20,7 @@ CRGB leds[NUM_LEDS];
 //// FOOT SWITCHES
 const unsigned int DEBOUNCE_DELAY = 50; // debounce time in ms; increase if the output flickers
 
-byte buttonCstate[NUM_BUTTONS] = {};              // stores the button current value
-byte buttonPstate[NUM_BUTTONS] = {};              // stores the button previous value
+byte buttonPreviousState[NUM_BUTTONS] = {};       // stores the button previous value
 unsigned long lastDebounceTime[NUM_BUTTONS] = {}; // the last time the pin was toggled
 
 // MIDI MESSAGE TYPES
@@ -74,9 +73,6 @@ enum midiMessage currentMessageType[NUM_BUTTONS] = {};
 byte currentProgram[NUM_BUTTONS] = {};
 byte currentChannel[NUM_BUTTONS] = {};
 
-byte progPin1State;
-byte progPin2State;
-
 byte lastProgPin1State = 0xFF;
 byte lastProgPin2State = 0xFF;
 
@@ -87,15 +83,10 @@ const unsigned int ANALOG_MAX = 1023;
 const unsigned int TIMEOUT = 800;      // Amount of time the potentiometer will be read after it exceeds the varThreshold
 const unsigned int VAR_THRESHOLD = 10; // Threshold for the potentiometer signal variation
 
-int potCurrentState;
 int potPreviousState;
-int potChange = 0; // Difference between the current and previous state
-boolean potMoving = true;
-unsigned long potTimer; // Stores the time that has elapsed since the potTimer was reset
 unsigned long potPreviousTime;
-
-byte exprCurrentMidiValue;  // Current state of the midi value
-byte exprPreviousMidiValue; // Previous state of the midi value
+boolean potStillMoving = true;
+byte exprPreviousMidiValue;
 
 /////////////////
 // rxMidi
@@ -108,17 +99,16 @@ byte rxVelocity = 0; // midi velocity
 
 byte midiClockCounter;
 
-////////////////////////////////////
-/////////////////// !! SETUP !! ////
+/////////////////////////////////////////////////////////////////////
+/////////////////// !! SETUP !! /////////////////////////////////////
 void setup()
 {
-  // Serial.begin(9600);   // turn on serial for debugging
-
   // IFNotDEFined, because code generates an error squiggle in VSCode with the
   // current arduino extension even if there is no problem with 'Serial1'
 #ifndef __INTELLISENSE__
   Serial1.begin(31250); // Set MIDI baud rate
 #endif
+  // Serial.begin(9600);   // for debugging
 
   pinMode(PIN_PROG1, INPUT_PULLUP); // program selector pin1
   pinMode(PIN_PROG2, INPUT_PULLUP); // program selector pin2
@@ -134,8 +124,8 @@ void setup()
   FastLED.show();                                          // refresh
 }
 
-/////////////////////////////////
-//////////// !! LOOP !! /////////
+//////////////////////////////////////////////////////////////////
+//////////// !! LOOP !! //////////////////////////////////////////
 void loop()
 {
   updateProgram();
@@ -150,15 +140,14 @@ void loop()
 
   // serialDebug();
 }
-
-///////////////////////////////////
-/////////////// FUNCTIONS /////////
+//////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////
 
 // CHECKPROGRAM
 void updateProgram()
 {
-  progPin1State = digitalRead(PIN_PROG1);
-  progPin2State = digitalRead(PIN_PROG2);
+  byte progPin1State = digitalRead(PIN_PROG1);
+  byte progPin2State = digitalRead(PIN_PROG2);
 
   if (progPin1State != lastProgPin1State || progPin2State != lastProgPin2State)
   {
@@ -215,20 +204,17 @@ void updateProgram()
 // BUTTONS
 void sendFootSwitchMidi()
 {
-
   for (int i = 0; i < NUM_BUTTONS; i++)
   {
-
-    buttonCstate[i] = digitalRead(BUTTON_PINS[i]);
-
     if ((millis() - lastDebounceTime[i]) > DEBOUNCE_DELAY)
     {
+      byte buttonCurrentState = digitalRead(BUTTON_PINS[i]);
 
-      if (buttonPstate[i] != buttonCstate[i])
+      if (buttonPreviousState[i] != buttonCurrentState)
       {
         lastDebounceTime[i] = millis();
 
-        if (buttonCstate[i] == LOW)
+        if (buttonCurrentState == LOW)
         {
           // ON
           if (currentMessageType[i] == midiMessage::NOTE)
@@ -270,7 +256,7 @@ void sendFootSwitchMidi()
         }
         MidiUSB.flush(); // send midi buffer
 
-        buttonPstate[i] = buttonCstate[i];
+        buttonPreviousState[i] = buttonCurrentState;
       }
     }
   }
@@ -280,12 +266,12 @@ void sendFootSwitchMidi()
 // EXPRESSION PEDAL
 void sendExpressionPedalMidi()
 {
-  potCurrentState = analogRead(PIN_POTI); // Reads the pot and stores it in the potCurrentState variable
+  int potCurrentState = analogRead(PIN_POTI); // Reads the pot and stores it in the potCurrentState variable
   // Serial.println(potCurrentState);
 
-  exprCurrentMidiValue = map(potCurrentState, ANALOG_MIN, ANALOG_MAX, 0, 127); // Maps the reading of the potCurrentState to a value usable in midi
+  byte exprCurrentMidiValue = map(potCurrentState, ANALOG_MIN, ANALOG_MAX, 0, 127); // Maps the reading of the potCurrentState to a value usable in midi
 
-  potChange = abs(potCurrentState - potPreviousState); // Calculates the absolute value between the difference between the current and previous state of the pot
+  int potChange = abs(potCurrentState - potPreviousState); // Calculates the absolute value between the difference between the current and previous state of the pot
 
   if (potChange > VAR_THRESHOLD)
   {
@@ -293,19 +279,17 @@ void sendExpressionPedalMidi()
     potPreviousTime = millis(); // Stores the previous time
   }
 
-  potTimer = millis() - potPreviousTime; // Resets the potTimer 11000 - 11000 = 0ms
-
-  if (potTimer < TIMEOUT)
+  if (millis() - potPreviousTime < TIMEOUT)
   {
     // If the potTimer is less than the maximum allowed time it means that the potentiometer is still moving
-    potMoving = true;
+    potStillMoving = true;
   }
   else
   {
-    potMoving = false;
+    potStillMoving = false;
   }
 
-  if (potMoving)
+  if (potStillMoving)
   {
     // If the potentiometer is still moving, send the change control
     if (exprPreviousMidiValue != exprCurrentMidiValue)
