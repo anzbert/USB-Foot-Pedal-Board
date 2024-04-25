@@ -91,17 +91,15 @@ const byte NUM_POTS = 1;               //* number of potis
 const unsigned int TIMEOUT = 800;      //* Amount of time the potentiometer will be read after it exceeds the varThreshold
 const unsigned int VAR_THRESHOLD = 10; //* Threshold for the potentiometer signal variation
 
-byte potPin[NUM_POTS] = {PIN_POTI}; //* Pin where the potentiometer is
-int potCState[NUM_POTS] = {};       // Current state of the pot
-int potPState[NUM_POTS] = {};       // Previous state of the pot
-int potVar = 0;                     // Difference between the current and previous state of the pot
+int potCurrentState;
+int potPreviousState;
+int potChange = 0; // Difference between the current and previous state
+boolean potMoving = true;
+unsigned long potTimer; // Stores the time that has elapsed since the potTimer was reset
+unsigned long potPreviousTime;
 
-byte midiCState[NUM_POTS] = {}; // Current state of the midi value
-byte midiPState[NUM_POTS] = {}; // Previous state of the midi value
-
-boolean potMoving = true;           // If the potentiometer is moving
-unsigned long PTime[NUM_POTS] = {}; // Previously stored time
-unsigned long timer[NUM_POTS] = {}; // Stores the time that has elapsed since the timer was reset
+byte exprCurrentMidiValue;  // Current state of the midi value
+byte exprPreviousMidiValue; // Previous state of the midi value
 
 /////////////////
 // rxMidi
@@ -112,8 +110,7 @@ byte rxType = 0;     // midi data type
 byte rxPitch = 0;    // midi pitch
 byte rxVelocity = 0; // midi velocity
 
-byte clockCounter;
-bool ledOn = 0;
+byte midiClockCounter;
 
 /////////////////////////////////////////////////
 // LEDS
@@ -128,7 +125,7 @@ CRGB leds[NUM_LEDS];
 /////////////////// !! SETUP !! ////
 void setup()
 {
-  // Serial.begin(9600);   // turns on serial readout for debugging
+  // Serial.begin(9600);   // turn on serial for debugging
 
   // IFNotDEFined, because code generates an error squiggle in VSCode with the
   // current arduino extension even if there is no problem with 'Serial1'
@@ -136,20 +133,20 @@ void setup()
   Serial1.begin(31250); // Set MIDI baud rate
 #endif
 
-  // program selector - set pullup resistor for 2 program selector pins
+  // program selector pins
   pinMode(PIN_PROG1, INPUT_PULLUP);
   pinMode(PIN_PROG2, INPUT_PULLUP);
 
-  // buttons
+  // foot switches
   for (int i = 0; i < NUM_BUTTONS; i++)
   {
     pinMode(BUTTON_PINS[i], INPUT_PULLUP); // sets pullup resistor mode for button pins
   }
 
-  // poti
-  pinMode(PIN_POTI, INPUT_PULLUP); // read expression pedal on this pin (RING)
+  // expr. pedal potentiometer pin (RING)
+  pinMode(PIN_POTI, INPUT_PULLUP);
 
-  // addressable RGB LEDS
+  // init LEDs
   FastLED.addLeds<LED_TYPE, DATA_PIN>(leds, NUM_LEDS);
   FastLED.clear();          // all addressable LEDs off during setup
   FastLED.setBrightness(8); // Brightness (0-255)
@@ -160,10 +157,10 @@ void setup()
 //////////// !! LOOP !! /////////
 void loop()
 {
-  checkProgram(); // check current program setting 1-3 & change midiout for buttons and expr.pedal
-  buttons();      // 2xbutton input to midi out
+  checkProgram(); // check which prog is selected
+  buttons();      // send button input to midi out
 
-  potentiometers(); // expression pedal
+  expressionPedal();
 
   refreshMidi(); // get latest received midi data
   rxMidiLeds();  // received Midi Notes to LED control (2xRGB)
@@ -297,50 +294,45 @@ void buttons()
 }
 
 /////////////////////////////////////////////
-// POTENTIOMETERS
-void potentiometers()
+// EXPRESSION PEDAL
+void expressionPedal()
 {
-  for (int i = 0; i < NUM_POTS; i++)
-  { // Loops through all the potentiometers
+  potCurrentState = analogRead(PIN_POTI); // Reads the pot and stores it in the potCurrentState variable
+  // Serial.println(potCurrentState);
 
-    potCState[i] = analogRead(potPin[i]); // Reads the pot and stores it in the potCState variable
-    Serial.println(potCState[i]);
+  exprCurrentMidiValue = map(potCurrentState, ANALOG_MIN, ANALOG_MAX, 0, 127); // Maps the reading of the potCurrentState to a value usable in midi
 
-    midiCState[i] = map(potCState[i], ANALOG_MIN, ANALOG_MAX, 0, 127); // Maps the reading of the potCState to a value usable in midi
+  potChange = abs(potCurrentState - potPreviousState); // Calculates the absolute value between the difference between the current and previous state of the pot
 
-    potVar = abs(potCState[i] - potPState[i]); // Calculates the absolute value between the difference between the current and previous state of the pot
+  if (potChange > VAR_THRESHOLD)
+  {
+    // Opens the gate if the potentiometer variation is greater than the threshold
+    potPreviousTime = millis(); // Stores the previous time
+  }
 
-    if (potVar > VAR_THRESHOLD)
-    {                      // Opens the gate if the potentiometer variation is greater than the threshold
-      PTime[i] = millis(); // Stores the previous time
-    }
+  potTimer = millis() - potPreviousTime; // Resets the potTimer 11000 - 11000 = 0ms
 
-    timer[i] = millis() - PTime[i]; // Resets the timer 11000 - 11000 = 0ms
+  if (potTimer < TIMEOUT)
+  {
+    // If the potTimer is less than the maximum allowed time it means that the potentiometer is still moving
+    potMoving = true;
+  }
+  else
+  {
+    potMoving = false;
+  }
 
-    if (timer[i] < TIMEOUT)
-    { // If the timer is less than the maximum allowed time it means that the potentiometer is still moving
-      potMoving = true;
-    }
-    else
+  if (potMoving)
+  {
+    // If the potentiometer is still moving, send the change control
+    if (exprPreviousMidiValue != exprCurrentMidiValue)
     {
-      potMoving = false;
-    }
+      controlChange(currentExprChannel, EXPRESSION_CC, exprCurrentMidiValue);
+      MidiUSB.flush();
 
-    if (potMoving)
-    { // If the potentiometer is still moving, send the change control
-      if (midiPState[i] != midiCState[i])
-      {
-        // use if using with ATmega328 (uno, mega, nano...)
-        // MIDI.sendControlChange(EXPRESSION_CC+i, midiCState[i], currentMidiChannel);
-
-        // use if using with ATmega32U4 (micro, pro micro, leonardo...)
-        controlChange(currentExprChannel, EXPRESSION_CC + i, midiCState[i]);
-        MidiUSB.flush();
-
-        // Serial.println(midiCState);
-        potPState[i] = potCState[i]; // Stores the current reading of the potentiometer to compare with the next
-        midiPState[i] = midiCState[i];
-      }
+      // Serial.println(exprCurrentMidiValue);
+      potPreviousState = potCurrentState; // Stores the current reading of the potentiometer to compare with the next
+      exprPreviousMidiValue = exprCurrentMidiValue;
     }
   }
 }
@@ -373,35 +365,34 @@ void rxMidiLeds()
   // receive a start
   if (rxType == 0xF && rxChannel == 0xA)
   {
-    clockCounter = 0;
+    midiClockCounter = 0;
   }
 
   // receive clock pulse
   if (rxType == 0xF && rxChannel == 0x8)
   {
-    clockCounter++;
+    midiClockCounter++;
   }
 
-  switch (clockCounter)
+  switch (midiClockCounter)
   {
   case 0:
     leds[0] = CHSV(currentColor, 255, 255); // change led colour depending on program
     FastLED.show();
-    ledOn = 1;
     break;
   case 2:                    // length of each blink in midi pulses (default:2)
     leds[0] = CHSV(0, 0, 0); // change led colour depending on program
     FastLED.show();
     break;
   case 24: // mid signal transmits 24 pulses per quarter note
-    clockCounter = 0;
+    midiClockCounter = 0;
     break;
   }
 
   // receive a stop -- turn led on permanently
   if (rxType == 0xF && rxChannel == 0xC)
   {
-    clockCounter = 0;
+    midiClockCounter = 0;
   }
 
   ////////////////////////////////////////
@@ -505,8 +496,6 @@ void serialDebug()
 // 0xFF is out of the 7bit midi range and will not be sent
 void midiSerial(byte cmd, byte pitch = 0xFF, byte velocity = 0xFF)
 {
-  // IFNotDEFined, because code generates an error squiggle in VSCode with the
-  // current arduino extension even if there is no problem with 'Serial1'
 #ifndef __INTELLISENSE__
   Serial1.write(cmd);
 #endif
