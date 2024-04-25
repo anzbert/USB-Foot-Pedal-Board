@@ -92,8 +92,8 @@ const unsigned int DEBOUNCE_DELAY = 50; // debounce time in ms; increase if the 
 // GLOBAL MUTABLE VARIABLES
 
 // Holds LEDS state
-CRGB leds[NUM_LEDS] = {0};
-bool lastLedState[NUM_LEDS] = {0};
+CRGB leds[NUM_LEDS] = {};
+bool lastLedState[NUM_LEDS] = {};
 
 // stores currently selected program
 byte currentProg = 0x00;
@@ -101,11 +101,11 @@ byte lastProgPin1State = 0xFF;
 byte lastProgPin2State = 0xFF;
 
 // stores current on/off state for toggles for all 3 programs
-bool currentlyOnStates[3][NUM_BUTTONS] = {0};
+bool currentlyOnStates[3][NUM_BUTTONS] = {};
 
 // store foot switch state and time
-byte buttonPreviousState[NUM_BUTTONS] = {0};       // stores the buttons prev values
-unsigned long lastDebounceTime[NUM_BUTTONS] = {0}; // the last time the button pins were toggled
+byte buttonPreviousState[NUM_BUTTONS] = {};       // stores the buttons prev values
+unsigned long lastDebounceTime[NUM_BUTTONS] = {}; // the last time the button pins were toggled
 
 // Expression pedal state, time and mid value
 int potPreviousState = 0;
