@@ -580,14 +580,25 @@ void programChange(byte channel, byte program)
 // MIDI messages via serial bus
 
 // Sends a midi signal on the serial bus
-// cmd = message type and channel,
-void midiSerial(byte cmd, byte pitch, byte velocity)
+// cmd = message type and channel, 0xFF is out of the range of 0x00 to 0x7F
+// and will not be sent, like in shorter commands
+void midiSerial(byte cmd, byte pitch = 0xFF, byte velocity = 0xFF)
 {
   // IFNDEF because code generates an error squiggle in VSCode with the current arduino extension
   // even if there is no problem with 'Serial1'
 #ifndef __INTELLISENSE__
   Serial1.write(cmd);
-  Serial1.write(pitch);
-  Serial1.write(velocity);
 #endif
+  if (pitch <= 0x7F)
+  {
+#ifndef __INTELLISENSE__
+    Serial1.write(pitch);
+#endif
+  }
+  if (velocity <= 0x7F)
+  {
+#ifndef __INTELLISENSE__
+    Serial1.write(velocity);
+#endif
+  }
 }
