@@ -138,13 +138,15 @@ void setup()
 //////////// !! LOOP !! /////////
 void loop()
 {
-  checkProgram(); // check which prog is selected
-  buttons();      // send button input to midi out
+  updateProgram();
 
-  expressionPedal();
+  sendFootSwitchMidi();
 
-  refreshMidi(); // get latest received midi data
-  rxMidiLeds();  // received Midi Notes to LED control (2xRGB)
+  sendExpressionPedalMidi();
+
+  receiveMidi();
+
+  updateLeds();
 
   // serialDebug();
 }
@@ -153,7 +155,7 @@ void loop()
 /////////////// FUNCTIONS /////////
 
 // CHECKPROGRAM
-void checkProgram()
+void updateProgram()
 {
   progPin1State = digitalRead(PIN_PROG1);
   progPin2State = digitalRead(PIN_PROG2);
@@ -211,7 +213,7 @@ void checkProgram()
   }
 }
 // BUTTONS
-void buttons()
+void sendFootSwitchMidi()
 {
 
   for (int i = 0; i < NUM_BUTTONS; i++)
@@ -276,7 +278,7 @@ void buttons()
 
 /////////////////////////////////////////////
 // EXPRESSION PEDAL
-void expressionPedal()
+void sendExpressionPedalMidi()
 {
   potCurrentState = analogRead(PIN_POTI); // Reads the pot and stores it in the potCurrentState variable
   // Serial.println(potCurrentState);
@@ -320,7 +322,7 @@ void expressionPedal()
 
 /////////////////////////
 ///////////// midiLeds
-void refreshMidi()
+void receiveMidi()
 {
   // MidiUSB library commands
   midiEventPacket_t rx;
@@ -336,7 +338,7 @@ void refreshMidi()
   rxUSB = rx.header;     // get usb header
 }
 
-void rxMidiLeds()
+void updateLeds()
 {
   //////////////////////////
   // CLOCK
