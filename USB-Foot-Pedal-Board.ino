@@ -1,76 +1,75 @@
-/*
-  PIN allocation:
-
-  - 2       7x fastleds (WS2812B)
-
-  - 3,4,5,6,7,8   footswitch PINs
-  - A1      (digital) ext FS PIN 1
-  - A0      (digital) ext FS PIN 2
-
-  - A3      (analog) ext EXPR. Pedal Input R2    !RING (ANALOGREAD here)
-
-  - 1       Serial Tx pin for Midi Out
-
-  -14, 15   3-program selector switch PINs
-*/
-
 #include <MIDIUSB.h>
 #include <FastLED.h>
 #include <ResponsiveAnalogRead.h>
 
-///////////////
-//// Buttons
-// number of footswitch buttons (6 buttons + 2 external)
-const byte NUM_BUTTONS = 8;
-// the number of the pushbutton pins in the desired order
-const byte BUTTON_PINS[NUM_BUTTONS] = {3, 4, 5, 6, 7, 8, A1, A0};
-// the debounce time in ms; increase if the output flickers
-const unsigned int DEBOUNCE_DELAY = 50;
+// NUMBER OF FOOT SWITCHES AND LEDS
+const byte NUM_BUTTONS = 8; // 6 internal buttons + 2 external
+const byte NUM_LEDS = 7;    // 0 is the indicator LED / 1-7 are the button LEDs
+
+// PINS
+// 'Serial1' Tx pin for DIN Midi Out = 1
+const byte BUTTON_PINS[NUM_BUTTONS] = {3, 4, 5, 6, 7, 8, A1, A0}; // 6 foot switch pins + 2 external
+const byte PIN_PROG1 = 14;                                        // 3-program selector switch PINs
+const byte PIN_PROG2 = 15;                                        // 3-program selector switch PINs
+const byte PIN_POTI = A3;                                         // (analog) EXPR. Pedal (Read on RING)
+const byte LEDS_DATA_PIN = 2;                                     // 7x fastleds (WS2812B)
+
+// LEDS ARRAY
+CRGB leds[NUM_LEDS];
+
+//// FOOT SWITCHES
+const unsigned int DEBOUNCE_DELAY = 50; // debounce time in ms; increase if the output flickers
 
 byte buttonCstate[NUM_BUTTONS] = {};              // stores the button current value
 byte buttonPstate[NUM_BUTTONS] = {};              // stores the button previous value
 unsigned long lastDebounceTime[NUM_BUTTONS] = {}; // the last time the pin was toggled
 
-// PROGRAMS
-const byte PIN_PROG1 = 14;
-const byte PIN_PROG2 = 15;
-
+// MIDI MESSAGE TYPES
 enum midiMessage
 {
   NOTE,
   CC,
-  PC,
+  PC, // 0-127 (equals Midi Programs 1-128)
   START,
   STOP,
   CONT
 };
 
-// Main Midi Channels are 1-16 (but really 0-15 under the hood)
+// ////////////////////////////////////////////////////////////////////////////////////
+// ////////////////////////////////////////////////////////////////////////////////////
+// PROGRAM SETTINGS
+// ////////////////////////////////////////////////////////////////////////////////////
+
+// Main Program Midi Channel in 0-15 (equals Midi Channels 1-16)
 const byte CH1 = 0;
 const byte CH2 = 8;
 const byte CH3 = 8;
 
-// first 6 for F/S and last 2 for external F/S
-const byte PROG1_VALUES[NUM_BUTTONS] = {88, 89, 91, 87, 35, 85, 100, 101};
-const midiMessage PROG1_TYPES[NUM_BUTTONS] = {CC, CC, CC, CC, NOTE, PC, START, STOP};
+// Buttons: First 6 values for internal foot switches and last 2 for external
+
+const byte PROG1_COLOR = HUE_GREEN;
+const byte PROG1_VALUES[NUM_BUTTONS] = {88, 89, 91, 87, 0, 85, 100, 101};
+const midiMessage PROG1_TYPES[NUM_BUTTONS] = {CC, CC, CC, CC, PC, CC, CC, CC};
 const byte PROG1_CHANNELS[NUM_BUTTONS] = {CH1, CH1, CH1, CH1, CH1, CH1, CH1, CH1};
 
+const byte PROG2_COLOR = HUE_RED;
 const byte PROG2_VALUES[NUM_BUTTONS] = {24, 25, 26, 27, 28, 29, 30, 31};
 const midiMessage PROG2_TYPES[NUM_BUTTONS] = {NOTE, NOTE, NOTE, NOTE, NOTE, NOTE, NOTE, NOTE};
 const byte PROG2_CHANNELS[NUM_BUTTONS] = {CH2, CH2, CH2, CH2, CH2, CH2, CH2, CH2};
 
+const byte PROG3_COLOR = HUE_BLUE;
 const byte PROG3_VALUES[NUM_BUTTONS] = {0, 1, 2, 3, 4, 5, 6, 7};
 const midiMessage PROG3_TYPES[NUM_BUTTONS] = {NOTE, NOTE, NOTE, NOTE, NOTE, NOTE, NOTE, NOTE};
 const byte PROG3_CHANNELS[NUM_BUTTONS] = {CH3, CH3, CH3, CH3, CH3, CH3, CH3, CH3};
 
-const byte PROG1_COLOR = HUE_GREEN;
-const byte PROG2_COLOR = HUE_RED;
-const byte PROG3_COLOR = HUE_BLUE;
-
+// EXPRESSION PEDAL CC
 const byte EXPRESSION_CC = 11;
 
+// ////////////////////////////////////////////////////////////////////////////////////
+// ////////////////////////////////////////////////////////////////////////////////////
+
 byte currentColor;
-byte currentExprChannel; // for expression pedal
+byte currentExprChannel;
 enum midiMessage currentMessageType[NUM_BUTTONS] = {};
 byte currentProgram[NUM_BUTTONS] = {};
 byte currentChannel[NUM_BUTTONS] = {};
@@ -78,18 +77,15 @@ byte currentChannel[NUM_BUTTONS] = {};
 byte progPin1State;
 byte progPin2State;
 
-byte lastProgPin1State = 99;
-byte lastProgPin2State = 99;
+byte lastProgPin1State = 0xFF;
+byte lastProgPin2State = 0xFF;
 
 /////////////////////////////////////////////
-// Potentiometers
-
+// EXPRESSION PEDAL (Potentiometer)
 const unsigned int ANALOG_MIN = 60;
 const unsigned int ANALOG_MAX = 1023;
-const byte PIN_POTI = A3;
-const byte NUM_POTS = 1;               //* number of potis
-const unsigned int TIMEOUT = 800;      //* Amount of time the potentiometer will be read after it exceeds the varThreshold
-const unsigned int VAR_THRESHOLD = 10; //* Threshold for the potentiometer signal variation
+const unsigned int TIMEOUT = 800;      // Amount of time the potentiometer will be read after it exceeds the varThreshold
+const unsigned int VAR_THRESHOLD = 10; // Threshold for the potentiometer signal variation
 
 int potCurrentState;
 int potPreviousState;
@@ -112,15 +108,6 @@ byte rxVelocity = 0; // midi velocity
 
 byte midiClockCounter;
 
-/////////////////////////////////////////////////
-// LEDS
-
-// WS2812B LEDS
-#define NUM_LEDS 7 // Number of addressable LEDS
-#define DATA_PIN 2 // LED PIN
-#define LED_TYPE WS2812B
-CRGB leds[NUM_LEDS];
-
 ////////////////////////////////////
 /////////////////// !! SETUP !! ////
 void setup()
@@ -133,24 +120,18 @@ void setup()
   Serial1.begin(31250); // Set MIDI baud rate
 #endif
 
-  // program selector pins
-  pinMode(PIN_PROG1, INPUT_PULLUP);
-  pinMode(PIN_PROG2, INPUT_PULLUP);
-
-  // foot switches
+  pinMode(PIN_PROG1, INPUT_PULLUP); // program selector pin1
+  pinMode(PIN_PROG2, INPUT_PULLUP); // program selector pin2
+  pinMode(PIN_POTI, INPUT_PULLUP);  // expr. pedal potentiometer pin (RING)
   for (int i = 0; i < NUM_BUTTONS; i++)
   {
-    pinMode(BUTTON_PINS[i], INPUT_PULLUP); // sets pullup resistor mode for button pins
+    pinMode(BUTTON_PINS[i], INPUT_PULLUP); // foot switch pins
   }
 
-  // expr. pedal potentiometer pin (RING)
-  pinMode(PIN_POTI, INPUT_PULLUP);
-
-  // init LEDs
-  FastLED.addLeds<LED_TYPE, DATA_PIN>(leds, NUM_LEDS);
-  FastLED.clear();          // all addressable LEDs off during setup
-  FastLED.setBrightness(8); // Brightness (0-255)
-  FastLED.show();
+  FastLED.addLeds<WS2812B, LEDS_DATA_PIN>(leds, NUM_LEDS); // init LEDs
+  FastLED.setBrightness(8);                                // set Brightness (0-255)
+  FastLED.clear();                                         // all LEDs off
+  FastLED.show();                                          // refresh
 }
 
 /////////////////////////////////
