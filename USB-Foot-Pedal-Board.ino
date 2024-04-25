@@ -74,7 +74,8 @@ const program PROG2 = {
     .channels = {9, 9, 9, 9, 9, 9, 9, 9},
 };
 
-const program PROGRAMS[] = {PROG0, PROG1, PROG2};
+const byte NUM_PROGRAMS = 3;
+const program PROGRAMS[NUM_PROGRAMS] = {PROG0, PROG1, PROG2};
 
 // EXPRESSION PEDAL SETTINGS
 const unsigned int ANALOG_MIN = 60;
