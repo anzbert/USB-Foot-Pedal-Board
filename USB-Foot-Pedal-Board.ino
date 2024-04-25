@@ -6,7 +6,7 @@
 const byte NUM_BUTTONS = 8; // 6 internal buttons + 2 external
 const byte NUM_LEDS = 7;    // 0 is the indicator LED / 1-7 are the button LEDs
 
-// PINS
+// HARDWARE PINS
 // 'Serial1' Tx pin for DIN Midi Out = 1
 const byte BUTTON_PINS[NUM_BUTTONS] = {3, 4, 5, 6, 7, 8, A1, A0}; // 6 foot switch pins + 2 external
 const byte PIN_PROG1 = 14;                                        // 3-program selector switch PINs
@@ -14,18 +14,8 @@ const byte PIN_PROG2 = 15;                                        // 3-program s
 const byte PIN_POTI = A3;                                         // (analog) EXPR. Pedal (Read on RING)
 const byte LEDS_DATA_PIN = 2;                                     // 7x fastleds (WS2812B)
 
-// LEDS ARRAY
-CRGB leds[NUM_LEDS];
-
-//// FOOT SWITCHES
-const unsigned int DEBOUNCE_DELAY = 50; // debounce time in ms; increase if the output flickers
-
-byte buttonPreviousState[NUM_BUTTONS] = {};       // stores the button previous value
-unsigned long lastDebounceTime[NUM_BUTTONS] = {}; // the last time the pin was toggled
-
-// TYPE DEFS
-
-enum midiMessage // Type of Midi Message
+// TYPE DEFINITIONS
+enum midiMessage // Accepted types of Midi Messages
 {
   NOTE,
   NOTE_OFF,
@@ -36,7 +26,7 @@ enum midiMessage // Type of Midi Message
   CONT
 };
 
-struct program // Program settings
+struct program // Store Program settings
 {
   byte color;
   byte expressionCC;
@@ -51,7 +41,7 @@ struct program // Program settings
 // PROGRAM SETTINGS
 // ////////////////////////////////////////////////////////////////////////////////////
 
-// // Buttons: First 6 values for internal foot switches and last 2 for external
+// Button Info: First 6 values for internal foot switches and last 2 for external
 
 const program PROG0 = {
     .color = HUE_GREEN,
@@ -80,30 +70,42 @@ const program PROG2 = {
     .channels = {9, 9, 9, 9, 9, 9, 9, 9},
 };
 
-// ////////////////////////////////////////////////////////////////////////////////////
-// ////////////////////////////////////////////////////////////////////////////////////
-
 const program PROGRAMS[] = {PROG0, PROG1, PROG2};
 
-byte currentProg = 0;
-byte lastProgPin1State = 0xFF;
-byte lastProgPin2State = 0xFF;
-
-/////////////////////////////////////////////
-// EXPRESSION PEDAL (Potentiometer)
+// EXPRESSION PEDAL SETTINGS
 const unsigned int ANALOG_MIN = 60;
 const unsigned int ANALOG_MAX = 1023;
 const unsigned int TIMEOUT = 800;      // Amount of time the potentiometer will be read after it exceeds the varThreshold
 const unsigned int VAR_THRESHOLD = 10; // Threshold for the potentiometer signal variation
 
+// FOOT SWITCH SETTINGS
+const unsigned int DEBOUNCE_DELAY = 50; // debounce time in ms; increase if the output flickers
+
+// ////////////////////////////////////////////////////////////////////////////////////
+// ////////////////////////////////////////////////////////////////////////////////////
+
+// ////////////////////////////////////////////////////////////////////////////////////
+// GLOBAL WORKING VARIABLES
+
+// Holds LEDS state
+CRGB leds[NUM_LEDS];
+
+// stores currently selected program
+byte currentProg = 0;
+byte lastProgPin1State = 0xFF;
+byte lastProgPin2State = 0xFF;
+
+// store foot switch state and time
+byte buttonPreviousState[NUM_BUTTONS] = {};       // stores the button previous value
+unsigned long lastDebounceTime[NUM_BUTTONS] = {}; // the last time the pin was toggled
+
+// Expression pedal state, time and mid value
 int potPreviousState;
 unsigned long potPreviousTime;
 bool potStillMoving = true;
 byte exprPreviousMidiValue;
 
-/////////////////
-// rxMidi
-
+// Stores the latest received midi data
 struct rxMidi
 {
   byte usbHeader = 0x00;
@@ -113,6 +115,7 @@ struct rxMidi
   byte velocity = 0x00;
 } rxMidi;
 
+// counts received midi clock pulses
 byte midiClockCounter = 0;
 
 /////////////////////////////////////////////////////////////////////
