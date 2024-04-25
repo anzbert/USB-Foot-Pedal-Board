@@ -28,13 +28,13 @@ enum midiMessage // Accepted types of Midi Messages
 
 struct program // Store Program settings
 {
-  byte colorHue;
-  byte expressionCC;
-  byte expressionChannel;
-  byte values[NUM_BUTTONS];
-  midiMessage types[NUM_BUTTONS];
-  bool toggle[NUM_BUTTONS];
-  byte channels[NUM_BUTTONS];
+  byte colorHue;                  // color of the LEDs in that program (0-255 or HUE_*)
+  byte expressionCC;              // expression pedal control value to send on (0-127)
+  byte expressionChannel;         // expression pedal channel (0-15)
+  byte values[NUM_BUTTONS];       // pitch or control value to send on (0-127)
+  midiMessage types[NUM_BUTTONS]; // type of midi message to send
+  bool toggle[NUM_BUTTONS];       // toggle (1) or momentary (0) function
+  byte channels[NUM_BUTTONS];     // channel to send on (0-15)
 };
 
 // ////////////////////////////////////////////////////////////////////////////////////
@@ -93,7 +93,6 @@ const unsigned int DEBOUNCE_DELAY = 50; // debounce time in ms; increase if the 
 
 // Holds LEDS state
 CRGB leds[NUM_LEDS] = {0};
-// byte lastBrightness[NUM_LEDS] = {0};
 bool lastLedState[NUM_LEDS] = {0};
 
 // stores currently selected program
@@ -348,7 +347,7 @@ void updateLeds()
   }
 
   /////////////////////////////
-  // check toggle state
+  // check on/off state
   for (byte b = 0; b < NUM_LEDS; b++)
   {
     if (currentlyOnStates[currentProg][b] != lastLedState[b])
