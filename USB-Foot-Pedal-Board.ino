@@ -1,43 +1,31 @@
 /*
-  Current PIN use:
+  PIN allocation:
+
   - 2       7x fastleds (WS2812B)
-  - 3,4,5,6,7,8   footswitches
 
-  - A0       ext FS  2
-  - A1       ext FS  1
+  - 3,4,5,6,7,8   footswitch PINs
+  - A1      (digital) ext FS PIN 1
+  - A0      (digital) ext FS PIN 2
 
-  - A3      (analog) INPUT R2    !RING (ANALOGREAD here)
+  - A3      (analog) ext EXPR. Pedal Input R2    !RING (ANALOGREAD here)
 
   - 1       Serial Tx pin for Midi Out
 
-  -14, 15   3-program selector switch
-
-  Functions:
-
-  Buttons
-  - NoteOn/Off
-  - Corresponding LED on/off on received NoteOn/Off
-
-  INPUTS
-  - Right input for external footswitch (soon: for expression pedal (potentiometer))
-  - Left input for external footswitch
+  -14, 15   3-program selector switch PINs
 */
 
-////// LIBRARIES
 #include <MIDIUSB.h>
 #include <FastLED.h>
 #include <ResponsiveAnalogRead.h>
 
-// LED HUE codes
-const byte RED = 0;
-const byte GREEN = 96;
-const byte BLUE = 160;
-
 ///////////////
 //// Buttons
-const byte NUM_BUTTONS = 8;                                       //*number of buttons (2 buttons + 2 encoder buttons + 1 digital crossfader)
-const byte BUTTON_PINS[NUM_BUTTONS] = {3, 4, 5, 6, 7, 8, A1, A0}; //* the number of the pushbutton pins in the desired order
-const unsigned int DEBOUNCE_DELAY = 50;                           // the debounce time in ms; increase if the output flickers
+// number of footswitch buttons (6 buttons + 2 external)
+const byte NUM_BUTTONS = 8;
+// the number of the pushbutton pins in the desired order
+const byte BUTTON_PINS[NUM_BUTTONS] = {3, 4, 5, 6, 7, 8, A1, A0};
+// the debounce time in ms; increase if the output flickers
+const unsigned int DEBOUNCE_DELAY = 50;
 
 byte buttonCstate[NUM_BUTTONS] = {};              // stores the button current value
 byte buttonPstate[NUM_BUTTONS] = {};              // stores the button previous value
@@ -75,9 +63,9 @@ const byte PROG3_VALUES[NUM_BUTTONS] = {0, 1, 2, 3, 4, 5, 6, 7};
 const midiMessage PROG3_TYPES[NUM_BUTTONS] = {NOTE, NOTE, NOTE, NOTE, NOTE, NOTE, NOTE, NOTE};
 const byte PROG3_CHANNELS[NUM_BUTTONS] = {CH3, CH3, CH3, CH3, CH3, CH3, CH3, CH3};
 
-const byte PROG1_COLOR = GREEN;
-const byte PROG2_COLOR = RED;
-const byte PROG3_COLOR = BLUE;
+const byte PROG1_COLOR = HUE_GREEN;
+const byte PROG2_COLOR = HUE_RED;
+const byte PROG3_COLOR = HUE_BLUE;
 
 const byte EXPRESSION_CC = 11;
 
@@ -142,8 +130,8 @@ void setup()
 {
   // Serial.begin(9600);   // turns on serial readout for debugging
 
-  // IFNDEF because code generates an error squiggle in VSCode with the current arduino extension
-  // even if there is no problem with 'Serial1'
+  // IFNotDEFined, because code generates an error squiggle in VSCode with the
+  // current arduino extension even if there is no problem with 'Serial1'
 #ifndef __INTELLISENSE__
   Serial1.begin(31250); // Set MIDI baud rate
 #endif
@@ -513,12 +501,12 @@ void serialDebug()
 // MIDI messages via serial bus
 
 // Sends a midi signal on the serial bus
-// cmd = message type and channel, 0xFF is out of the range of 0x00 to 0x7F
-// and will not be sent, like in shorter commands
+// cmd = message type and channel,
+// 0xFF is out of the 7bit midi range and will not be sent
 void midiSerial(byte cmd, byte pitch = 0xFF, byte velocity = 0xFF)
 {
-  // IFNDEF because code generates an error squiggle in VSCode with the current arduino extension
-  // even if there is no problem with 'Serial1'
+  // IFNotDEFined, because code generates an error squiggle in VSCode with the
+  // current arduino extension even if there is no problem with 'Serial1'
 #ifndef __INTELLISENSE__
   Serial1.write(cmd);
 #endif
@@ -536,14 +524,8 @@ void midiSerial(byte cmd, byte pitch = 0xFF, byte velocity = 0xFF)
   }
 }
 
-////////////////////////////////////////////////////////////////////////////////////////////
-// Arduino (pro)micro midi functions MIDIUSB Library for sending CCs and noteON and noteOFF
-
-/*
-11111010= FA= 250	Start	    none	none
-11111011= FB= 251	Continue	none	none
-11111100= FC= 252	Stop	    none	none
-*/
+//////////////////////////////////////////////////////////////////////////////
+// Arduino (pro)micro midi functions MIDIUSB Library for sending Midi Messages
 
 void midiStart(byte channel)
 {
