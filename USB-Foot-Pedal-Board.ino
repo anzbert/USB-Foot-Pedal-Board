@@ -91,19 +91,19 @@ const unsigned int DEBOUNCE_DELAY = 50; // debounce time in ms; increase if the 
 CRGB leds[NUM_LEDS];
 
 // stores currently selected program
-byte currentProg = 0;
+byte currentProg = 0x00;
 byte lastProgPin1State = 0xFF;
 byte lastProgPin2State = 0xFF;
 
 // store foot switch state and time
-byte buttonPreviousState[NUM_BUTTONS] = {};       // stores the buttons previous values
+byte buttonPreviousState[NUM_BUTTONS] = {};       // stores the buttons prev values
 unsigned long lastDebounceTime[NUM_BUTTONS] = {}; // the last time the button pins were toggled
 
 // Expression pedal state, time and mid value
-int potPreviousState;
-unsigned long potPreviousTime;
+int potPreviousState = 0;
+unsigned long potPreviousTime = 0;
 bool potStillMoving = true;
-byte exprPreviousMidiValue;
+byte exprPreviousMidiValue = 0xFF;
 
 // Stores the latest received midi data
 struct rxMidi
@@ -116,7 +116,7 @@ struct rxMidi
 } rxMidi;
 
 // counts received midi clock pulses
-byte midiClockCounter = 0;
+byte midiClockCounter = 0x00;
 
 /////////////////////////////////////////////////////////////////////
 /////////////////// !! SETUP !! /////////////////////////////////////
