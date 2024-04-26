@@ -14,6 +14,15 @@ const byte PIN_POTI = A3;                                         // (analog) EX
 const byte LEDS_DATA_PIN = 2;                                     // 7x fastleds (WS2812B)
 
 // TYPE DEFINITIONS
+struct rxMidi // Stores the latest received midi data
+{
+  byte usbHeader = 0x00;
+  byte channel = 0x00;
+  byte type = 0x00;
+  byte pitch = 0x00;
+  byte velocity = 0x00;
+};
+
 enum midiMessage // Accepted types of Midi Messages
 {
   NOTE,
@@ -113,16 +122,6 @@ unsigned long potPreviousTime = 0;
 bool potStillMoving = true;
 byte exprPreviousMidiValue = 0xFF;
 
-// Stores the latest received midi data
-struct rxMidi
-{
-  byte usbHeader = 0x00;
-  byte channel = 0x00;
-  byte type = 0x00;
-  byte pitch = 0x00;
-  byte velocity = 0x00;
-} rxMidi;
-
 // counts received midi clock pulses
 byte midiClockCounter = 0x00;
 
@@ -161,13 +160,13 @@ void loop()
 
   sendExpressionPedalMidi();
 
-  receiveUsbMidi();
+  rxMidi refreshedRxMidi = receiveUsbMidi();
 
-  updateToggleState();
+  updateToggleState(refreshedRxMidi);
 
-  updateLeds();
+  updateLeds(refreshedRxMidi);
 
-  // serialDebug();
+  // serialDebug(refreshedRxMidi);
 }
 //////////////////////////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////
@@ -269,11 +268,13 @@ void sendExpressionPedalMidi()
 
 /////////////////////////////////////////////////
 ///////////// REFRESH RECEIVED MIDI DATA BUFFER
-void receiveUsbMidi()
+rxMidi receiveUsbMidi()
 {
   // MidiUSB library commands
   midiEventPacket_t rx;
   rx = MidiUSB.read();
+
+  rxMidi rxMidi;
 
   // Bitshift to separate rx.byte1 (byte = 8bit) into first 4bit (TYPE), and second 4bit (Channel)
   rxMidi.channel = rx.byte1 & B00001111; // get channel
@@ -283,9 +284,11 @@ void receiveUsbMidi()
   rxMidi.pitch = rx.byte2;      // Received pitch - midi-button-and-led first note setting
   rxMidi.velocity = rx.byte3;   // Velocity variable - can be used, for example, for brightness
   rxMidi.usbHeader = rx.header; // get usb header
+
+  return rxMidi;
 }
 
-void updateToggleState()
+void updateToggleState(rxMidi rxMidi)
 {
   if (rxMidi.type == 0x9 || rxMidi.type == 0xB || rxMidi.type == 0x8)
   {
@@ -306,7 +309,7 @@ void updateToggleState()
   }
 }
 
-void updateLeds()
+void updateLeds(rxMidi rxMidi)
 {
   //////////////////////////
   // CLOCK
@@ -369,7 +372,7 @@ void updateLeds()
   }
 }
 
-void serialDebug()
+void serialDebug(rxMidi rxMidi)
 {
   // DEBUG raw rxMidi data
   if (rxMidi.usbHeader != 0)
