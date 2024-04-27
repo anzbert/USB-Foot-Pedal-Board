@@ -16,11 +16,11 @@ const byte LEDS_DATA_PIN = 2;                                     // 7x fastleds
 // TYPE DEFINITIONS
 struct rxMidi // Stores the latest received midi data
 {
-  byte usbHeader = 0x00;
-  byte channel = 0x00;
-  byte type = 0x00;
-  byte pitch = 0x00;
-  byte velocity = 0x00;
+  byte usbHeader;
+  byte channel;
+  byte type;
+  byte pitch;
+  byte velocity;
 };
 
 enum midiMessage // Accepted types of Midi Messages
@@ -270,20 +270,15 @@ void sendExpressionPedalMidi()
 ///////////// REFRESH RECEIVED MIDI DATA BUFFER
 rxMidi receiveUsbMidi()
 {
-  // MidiUSB library commands
-  midiEventPacket_t rx;
-  rx = MidiUSB.read();
+  midiEventPacket_t rx = MidiUSB.read(); // get latest received Midi from USB
 
-  rxMidi rxMidi;
-
-  // Bitshift to separate rx.byte1 (byte = 8bit) into first 4bit (TYPE), and second 4bit (Channel)
-  rxMidi.channel = rx.byte1 & B00001111; // get channel
-
-  // Bitshift to separate rx.byte1 (byte = 8bit) into first 4bit (TYPE), and second 4bit (Channel)
-  rxMidi.type = rx.byte1 >> 4;
-  rxMidi.pitch = rx.byte2;      // Received pitch - midi-button-and-led first note setting
-  rxMidi.velocity = rx.byte3;   // Velocity variable - can be used, for example, for brightness
-  rxMidi.usbHeader = rx.header; // get usb header
+  rxMidi rxMidi = {
+      .usbHeader = rx.header,
+      .channel = rx.byte1 & B00001111, // Separated rx.byte1 to get Channel
+      .type = rx.byte1 >> 4,           // Separated rx.byte1 to get Type
+      .pitch = rx.byte2,
+      .velocity = rx.byte3,
+  };
 
   return rxMidi;
 }
